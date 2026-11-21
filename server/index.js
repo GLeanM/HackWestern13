@@ -1,5 +1,6 @@
 import { createApp } from "./app.js";
 import { openDb } from "./db.js";
+import { createGeminiPlanner } from "./planner/mealPlan.js";
 
 const domain = process.env.AUTH0_DOMAIN ?? process.env.VITE_AUTH0_DOMAIN;
 const audience = process.env.AUTH0_AUDIENCE ?? process.env.VITE_AUTH0_AUDIENCE;
@@ -8,6 +9,7 @@ const port = Number(process.env.API_PORT ?? 3001);
 const missing = [
   !domain && "AUTH0_DOMAIN (or VITE_AUTH0_DOMAIN)",
   !audience && "AUTH0_AUDIENCE (or VITE_AUTH0_AUDIENCE)",
+  !process.env.GEMINI_API_KEY && "GEMINI_API_KEY",
 ].filter(Boolean);
 if (missing.length) {
   console.error(`Missing env: ${missing.join(", ")}. Add them to .env.local.`);
@@ -22,6 +24,11 @@ const app = createApp({
     tokenSigningAlg: "RS256",
   },
   db,
+  planner: createGeminiPlanner({
+    apiKey: process.env.GEMINI_API_KEY,
+    models: (process.env.GEMINI_MODELS ?? "gemini-3.5-flash,gemini-flash-latest").split(",").map((s) => s.trim()),
+    thinkingLevel: process.env.GEMINI_THINKING ?? "low",
+  }),
   corsOrigins: (process.env.CORS_ORIGINS ?? "http://localhost:5173").split(","),
 });
 

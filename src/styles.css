@@ -48,3 +48,26 @@ button:disabled { opacity: 0.6; cursor: default; }
 .muted { color: var(--muted); font-size: 0.85rem; }
 .ok { color: var(--accent); }
 .error, .field small.error { color: var(--error); }
+
+/* Profile card collapses once saved */
+.card details > summary { cursor: pointer; list-style: none; }
+.card details > summary::-webkit-details-marker { display: none; }
+.card details > summary h2 { display: inline-block; margin-bottom: 12px; }
+.card details > summary h2::after { content: " ▾"; color: var(--muted); font-size: 0.9rem; }
+.card details:not([open]) > summary h2 { margin-bottom: 0; }
+.card details:not([open]) > summary h2::after { content: " ▸"; }
+
+/* Plan result */
+.plan h3 { margin: 20px 0 8px; font-size: 1.05rem; }
+.plan h4 { margin: 12px 0 4px; font-size: 0.85rem; text-transform: capitalize; color: var(--muted); }
+.shopping { list-style: none; padding: 0; margin: 0; }
+.shopping li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); text-transform: capitalize; }
+.shopping .qty { color: var(--muted); white-space: nowrap; text-transform: none; }
+.warnings { padding-left: 18px; margin: 8px 0; }
+.warnings li { margin: 4px 0; }
+.warn-allergy, .warn-diet, .warn-avoid, .warn-budget { color: var(--error); }
+.warn-allergy-check, .warn-long-list { color: var(--muted); }
+.plan details { margin-top: 16px; }
+.plan details > summary { cursor: pointer; font-weight: 600; }
+.day ul { margin: 0; padding-left: 18px; }
+.day li { margin: 2px 0; }

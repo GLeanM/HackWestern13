@@ -15,7 +15,7 @@ Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&
 
 1. **Sign in.** Auth0 handles sign-up and login. The React app gets an access token for the CartPilot API.
 2. **Profile.** Budget, people, days, diet, cuisines, allergies, foods to skip, nutrition and cooking preferences, postal code, and pantry. Saved per user.
-3. **Plan.** An LLM produces a structured meal plan and ingredient list. Server code (not the LLM) merges duplicates, removes pantry items and exclusions.
+3. **Plan.** Google Gemini (structured JSON output) produces a structured meal plan and ingredient list. Server code (not the LLM) merges duplicates, removes pantry items and exclusions.
 4. **Research.** TinyFish reads T&T search results for each ingredient: name, package size, price. Server code picks the best match by unit price, package size and exclusions, then totals the cart against the budget.
 5. **Review.** You swap or remove items, see the total and any warnings (over budget, unavailable, allergy check).
 6. **Build cart.** After you approve, a TinyFish agent signed in to your T&T account adds exactly those products to the cart. It is explicitly told never to check out or pay.
@@ -33,8 +33,8 @@ Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&
 | --- | --- |
 | 1. Prove the agent on a real retailer | ✅ T&T search reading and add-to-cart verified (Walmart.ca was dropped: its bot check blocked cart actions) |
 | 2. Secure shell: Express API, Auth0 tokens, saved profiles | ✅ Done, tested with a real login |
-| 3. Meal planner | ⏳ Next |
-| 4. Product research | ⏳ |
+| 3. Meal planner (Gemini → consolidated shopping list) | ✅ Done |
+| 4. Product research | ⏳ Next |
 | 5. Review, approve, build cart | ⏳ |
 | 6. Polish and demo backup | ⏳ |
 
@@ -43,6 +43,7 @@ Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&
 - **Frontend:** React 19 + Vite, `@auth0/auth0-react`
 - **Backend:** Node 24 + Express 5, `express-oauth2-jwt-bearer`
 - **Database:** SQLite via Node's built-in `node:sqlite` (file at `data/cartpilot.db`)
+- **Meal planning:** Google Gemini (`gemini-3.5-flash`, low thinking; falls back to `gemini-flash-latest`)
 - **Agent:** TinyFish (web fetch + browser automation)
 
 ## Project layout
@@ -52,13 +53,19 @@ src/
   main.jsx          Auth0Provider (requests a token for the CartPilot API)
   App.jsx           Login / logout shell
   ProfileForm.jsx   Load and save the grocery profile
+  PlanPanel.jsx     Start a plan, poll it, show meals and the shopping list
   api.js            fetch wrapper that attaches the Auth0 access token
 server/
   index.js          Reads env, opens the DB, starts the API
   app.js            Routes + Auth0 token and scope checks
   profile.js        Profile validation and defaults
-  db.js             SQLite storage, keyed by Auth0 user id
-  app.test.js       API tests (auth failures, scopes, per-user isolation, validation)
+  db.js             SQLite storage (profiles, shopping tasks), keyed by Auth0 user id
+  tasks.js          Starts a planning task and runs it in the background
+  planner/
+    gemini.js       Gemini REST client: structured JSON, retries, model fallback
+    mealPlan.js     Prompt + JSON schema for the meal plan
+    consolidate.js  Merges ingredients, removes pantry/allergy/avoid/diet items, warnings
+  app.test.js       API tests (auth, scopes, isolation, validation, tasks)
 ```
 
 ## API
@@ -70,8 +77,11 @@ All `/api/*` routes except health need `Authorization: Bearer <Auth0 access toke
 | GET | `/api/health` | none | Liveness check |
 | GET | `/api/profile` | `read:profile` | Your saved profile (defaults if none yet) |
 | PUT | `/api/profile` | `write:profile` | Validate and save your profile |
+| POST | `/api/shopping-tasks` | `read:profile` | Start a meal plan from your saved profile (+ optional `note`). Returns `202` with a task in `planning` state |
+| GET | `/api/shopping-tasks` | `read:profile` | Your 10 most recent tasks |
+| GET | `/api/shopping-tasks/:id` | `read:profile` | One of your tasks: meals, shopping list, pantry-covered items, removed items, warnings. Other users' tasks are `404` |
 
-Errors: `401` bad or missing token, `403` missing scope, `400` invalid input (with per-field messages).
+Errors: `401` bad or missing token, `403` missing scope, `400` invalid input (with per-field messages), `409` no saved profile yet or a plan already in progress.
 
 ## Running locally
 

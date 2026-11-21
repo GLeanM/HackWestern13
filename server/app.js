@@ -2,6 +2,9 @@ import express from "express";
 import cors from "cors";
 import { auth, requiredScopes } from "express-oauth2-jwt-bearer";
 import { validateProfile, DEFAULT_PROFILE } from "./profile.js";
+import { validateTaskInput, startPlanningTask } from "./tasks.js";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export const SCOPES = {
   readProfile: "read:profile",
@@ -14,9 +17,10 @@ export const SCOPES = {
  * @param {object} opts.authOptions  options for express-oauth2-jwt-bearer `auth()`
  *        (production: { issuerBaseURL, audience }; tests inject a local key).
  * @param {object} opts.db           store from openDb()
+ * @param {Function} opts.planner    async (profile, note) => plan (see planner/mealPlan.js)
  * @param {string[]} [opts.corsOrigins]
  */
-export function createApp({ authOptions, db, corsOrigins = [] }) {
+export function createApp({ authOptions, db, planner, corsOrigins = [], log = console }) {
   const app = express();
   app.disable("x-powered-by");
   app.use(cors({ origin: corsOrigins, allowedHeaders: ["Authorization", "Content-Type"] }));
@@ -44,6 +48,38 @@ export function createApp({ authOptions, db, corsOrigins = [] }) {
     res.json({ profile, saved: true });
   });
 
+  // --- Shopping tasks (meal plan → shopping list; later: products and cart) ---
+  // Planning reads the user's profile, so it needs read:profile. The scope that
+  // lets the agent touch the real cart (build:cart) is reserved for that step.
+
+  api.post("/shopping-tasks", requiredScopes(SCOPES.readProfile), (req, res) => {
+    const sub = userSub(req);
+    const { value, errors } = validateTaskInput(req.body);
+    if (errors) return res.status(400).json({ error: "invalid_task", fields: errors });
+    const stored = db.getProfile(sub);
+    if (!stored) return res.status(409).json({ error: "profile_required", message: "Save your profile first." });
+    if (db.activeTaskCount(sub) > 0) {
+      return res.status(409).json({ error: "task_in_progress", message: "A plan is already being made. Wait for it to finish." });
+    }
+    const { updatedAt: _ignored, ...profile } = stored;
+    const task = startPlanningTask({ db, planner, sub, profile, note: value.note, log });
+    res.status(202).location(`/api/shopping-tasks/${task.id}`).json({ task });
+  });
+
+  api.get("/shopping-tasks", requiredScopes(SCOPES.readProfile), (req, res) => {
+    const tasks = db.listTasks(userSub(req)).map(({ id, status, createdAt, updatedAt, result }) => ({
+      id, status, createdAt, updatedAt, summary: result?.summary ?? null,
+    }));
+    res.json({ tasks });
+  });
+
+  api.get("/shopping-tasks/:id", requiredScopes(SCOPES.readProfile), (req, res) => {
+    // 404 (not 403) for other users' tasks so ids can't be probed.
+    const task = UUID_RE.test(req.params.id) ? db.getTask(userSub(req), req.params.id) : null;
+    if (!task) return res.status(404).json({ error: "not_found" });
+    res.json({ task });
+  });
+
   app.use("/api", api);
 
   app.use("/api", (_req, res) => res.status(404).json({ error: "not_found" }));
@@ -55,7 +91,7 @@ export function createApp({ authOptions, db, corsOrigins = [] }) {
       return res.status(400).json({ error: "invalid_json" });
     }
     const status = err.status ?? err.statusCode ?? 500;
-    if (status >= 500) console.error(err);
+    if (status >= 500) log.error(err);
     res
       .status(status)
       .json({ error: status === 401 ? "unauthorized" : status === 403 ? "forbidden" : status >= 500 ? "server_error" : err.code ?? "error" });
