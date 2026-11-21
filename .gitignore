@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+.DS_Store
+.auth0-mcp-state.json
+.auth0-mcp-writes.log
+data/

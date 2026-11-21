@@ -1,0 +1,29 @@
+{
+  "name": "hackwestern13",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
+    "build": "vite build",
+    "preview": "vite preview --port 5173 --strictPort",
+    "dev:web": "vite --port 5173 --strictPort",
+    "dev:api": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env.local --watch server/index.js",
+    "start:api": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env.local server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test \"server/**/*.test.js\""
+  },
+  "dependencies": {
+    "@auth0/auth0-react": "^2.30.0",
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "express-oauth2-jwt-bearer": "^1.11.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.3.0",
+    "concurrently": "^10.0.7",
+    "jose": "^6.2.18",
+    "vite": "^8.3.8"
+  }
+}
