@@ -1,0 +1,334 @@
+This is my idea for the hackathon: 
+
+<pasted_content id="d329">
+**HACKWESTERN 2026 | SPONSOR TRACK PROJECT**
+
+**CartPilot**
+
+Your personal AI grocery-shopping employee
+
+**PROJECT CONCEPT & BUILD REFERENCE**
+
+An AI-powered application that turns a user's grocery budget and food preferences into a practical meal plan, researches real products on grocery websites, and builds a reviewable shopping cart.
+
+**THE CORE DIFFERENTIATOR**
+
+CartPilot does not stop at suggesting recipes or generating a grocery list. It uses TinyFish to complete a real browser-based shopping task: finding products and adding selected items to a grocery cart, with the user reviewing the cart before any purchase.
+
+**Target sponsor tracks**
+
+- Auth0 — secure user identity, protected profiles, and controlled agent permissions.
+- TinyFish — live website research and browser automation that completes the grocery-cart task.
+
+_Working project name: CartPilot (can be renamed by the team)_
+
+# **1\. Project overview**
+
+CartPilot is a personal grocery-shopping agent. A user provides a spending limit, household size, food preferences, exclusions, and preferred grocery retailer. CartPilot turns those inputs into a meal plan and ingredient list, researches matching products and prices on the retailer's live website, and adds selected items to a cart for the user to review.
+
+## **The problem**
+
+Planning groceries takes more than writing down ingredients. People need to decide what to cook, estimate quantities, check what they already have, compare product sizes and prices, and stay within a budget. The work is repetitive and spread across recipes, lists, and retailer websites.
+
+## **The proposed solution**
+
+CartPilot combines meal planning, practical shopping logic, and browser-based task completion in one workflow. The user describes what they need; the agent performs the online research and cart-building work; the user retains control over the final selection and purchase.
+
+## **Example user request**
+
+**SAMPLE PROMPT**
+
+"I have \$100 for groceries for the week. Plan simple meals for one person, prioritize foods I enjoy, include protein-rich options, avoid snacks and sugary drinks, and use ingredients I already have in my pantry where possible."
+
+## **What a successful result looks like**
+
+- A meal plan for the requested number of days and people.
+- A consolidated grocery list with quantities and ingredients already covered by pantry items removed.
+- Products found on a real grocery retailer website, with visible prices and package sizes where available.
+- A cart populated with selected products and an estimated total that fits the user's budget, or a clear explanation when it does not.
+- A review screen where the user can remove or replace products before proceeding to the retailer's checkout flow.
+
+## **Product principles**
+
+| **Principle**                    | **What it means for CartPilot**                                                                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Useful over flashy**           | Complete one grocery-shopping task reliably before adding many extra features.                                                                                |
+| **Budget-aware and transparent** | Show an itemized estimate, account for quantities and package sizes, and explain where prices or availability are uncertain.                                  |
+| **User-controlled and private**  | Protect each user's profile and task history. Let users review the cart and approve consequential actions; do not place orders or make payments autonomously. |
+
+# **2\. User profile and shopping experience**
+
+The profile should focus on information that directly improves grocery recommendations. Height, weight, and age are not required for the core shopping task and should not be collected for the MVP.
+
+## **Recommended user inputs**
+
+| **Input**                            | **How CartPilot uses it**                                                      | **MVP?**                         |
+| ------------------------------------ | ------------------------------------------------------------------------------ | -------------------------------- |
+| **Grocery budget**                   | Sets a spending target and guides product selection.                           | Required                         |
+| **Number of people**                 | Scales meal servings and ingredient quantities.                                | Required                         |
+| **Shopping period**                  | Defines whether the list covers a few days or a week.                          | Required                         |
+| **Food preferences**                 | Supports choices such as vegetarian, vegan, or preferred cuisines.             | Required                         |
+| **Allergies / ingredients to avoid** | Filters known ingredients and flags products that need user verification.      | Required field, optional to fill |
+| **Foods / categories to avoid**      | Excludes disliked foods or categories such as snacks or sugary drinks.         | Recommended                      |
+| **Nutrition preferences**            | Can prioritize general preferences such as protein- or fibre-containing foods. | Optional                         |
+| **Cooking preferences**              | Supports quick meals, batch cooking, or minimal preparation.                   | Recommended                      |
+| **Preferred retailer**               | Tells the agent which grocery website to use.                                  | Required for live cart demo      |
+| **Pantry inventory**                 | Avoids recommending purchases for ingredients the user already has.            | Stretch / simplified MVP         |
+
+**IMPORTANT FOOD-SAFETY NOTE**
+
+Allergy filters are a helpful screening feature, not a guarantee of safety. Product ingredients, labels, and cross-contact information can change or be incomplete online. Clearly tell users to verify current packaging and retailer information themselves. Do not present CartPilot as a medical or dietetic service.
+
+## **Suggested end-to-end user journey**
+
+| **Step**                  | **User experience**                                                                           | **Application behaviour**                                                               |
+| ------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **1\. Sign in**           | User creates an account or signs in.                                                          | Auth0 authenticates the user; backend identifies the account.                           |
+| **2\. Set preferences**   | User enters budget, household size, food preferences, exclusions, retailer, and pantry items. | Profile is saved against the authenticated user.                                        |
+| **3\. Generate plan**     | User requests groceries for a defined period.                                                 | AI produces a structured meal plan and ingredient list.                                 |
+| **4\. Research products** | User sees that the agent is shopping on the selected site.                                    | TinyFish navigates the live retailer website and gathers candidate products and prices. |
+| **5\. Build cart**        | User sees selected items and progress.                                                        | Agent adds suitable products to the cart where supported.                               |
+| **6\. Review**            | User checks quantities, substitutions, and estimated total.                                   | App validates constraints and offers remove / replace controls.                         |
+| **7\. Continue manually** | User decides whether to proceed to checkout.                                                  | User takes over on the retailer site; CartPilot does not submit payment.                |
+
+# **3\. Sponsor integration strategy**
+
+## **TinyFish: the agent that does the shopping work**
+
+TinyFish should be central to the product, not a small add-on. Its role is to carry out the real-world browser work that would otherwise require a person to open a grocery site, search for products, compare options, and add items to a cart.
+
+### **Recommended TinyFish workflow**
+
+1. Receive a structured shopping task: retailer, product query, quantity, exclusions, budget context, and relevant user preferences.
+2. Navigate the selected retailer's live website and search for candidate items.
+3. Inspect product details that are available on the site, such as product name, package size, price, and availability.
+4. Select products that match the shopping list and constraints; record any substitutions or unavailable items.
+5. Add selected products to the cart where the retailer and site interaction permit it.
+6. Return a structured result to the backend so the application can validate and display the cart.
+
+**BUILD FOR A REAL, VISIBLE COMPLETION**
+
+For the TinyFish prize, aim to show the live agent completing the task on an actual grocery website. Product recommendations or a simulated cart alone are weaker evidence of an AI employee doing a job end to end. Test the chosen retailer early because site layouts, login requirements, bot protections, and availability can affect automation.
+
+## **Auth0: secure identity and controlled access**
+
+Auth0 should protect the application's user and agent workflow. Authentication is the starting point; the stronger integration is ensuring that every profile, shopping task, and history record belongs to the correct signed-in user, and that sensitive actions remain under user control.
+
+| **Auth0 use**               | **Implementation direction**                                                                               |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Sign-up and sign-in**     | Use Auth0's supported SDK / integration for the selected frontend framework.                               |
+| **Protected backend**       | Validate access tokens on private API endpoints; do not trust a user ID supplied by the browser.           |
+| **User-scoped data**        | Derive the user identity from the verified token and use it for profile, preferences, and history queries. |
+| **Agent authorization**     | Keep the agent's permissions narrow. It should only perform the shopping task the user requested.          |
+| **User approval**           | Require explicit user review before consequential actions, especially checkout or payment-related steps.   |
+| **Secrets and credentials** | Keep Auth0 secrets, API keys, and retailer credentials out of frontend code, prompts, and logs.            |
+
+## **How the two sponsor tools work together**
+
+Auth0 establishes who the user is and protects access to their data. The backend then creates a shopping task for that authenticated user. TinyFish performs the browser-based research and cart-building work. The backend checks the result against the user's constraints and returns it to the same user for review.
+
+# **4\. Technical architecture**
+
+The following stack is a practical starting point for a fast hackathon build. Treat it as a recommendation, not a requirement; keep the architecture simple enough that the team can complete and demo the full workflow.
+
+| **Layer**          | **Suggested technology**    | **Responsibility**                                                                          |
+| ------------------ | --------------------------- | ------------------------------------------------------------------------------------------- |
+| **Frontend**       | React + TypeScript          | Profile setup, request form, progress view, meal plan, product comparison, and cart review. |
+| **Authentication** | Auth0                       | Sign-up, sign-in, access tokens, and identity.                                              |
+| **Backend**        | Node.js + Express           | Protected APIs, task orchestration, validation, and coordination between services.          |
+| **Browser agent**  | TinyFish                    | Live retailer navigation, product research, and cart interactions.                          |
+| **AI planning**    | LLM API                     | Convert user requirements into a structured meal plan and ingredient list.                  |
+| **Database**       | PostgreSQL                  | User-scoped profiles, preferences, shopping tasks, and saved results.                       |
+| **Hosting**        | Vercel + Render (suggested) | Frontend and backend deployment, subject to team preference and free-tier limits.           |
+
+## **High-level request flow**
+
+| **#** | **Component**      | **Action**                                                                           |
+| ----- | ------------------ | ------------------------------------------------------------------------------------ |
+| **1** | React frontend     | User signs in and submits a grocery request.                                         |
+| **2** | Auth0              | User is authenticated; frontend sends an access token with the API request.          |
+| **3** | Express backend    | Verifies the token, loads that user's profile, and creates a shopping task.          |
+| **4** | LLM planner        | Returns structured meals, ingredients, quantities, and shopping constraints.         |
+| **5** | Backend logic      | Deduplicates ingredients, applies pantry exclusions, and prepares search tasks.      |
+| **6** | TinyFish           | Searches the selected retailer and builds a cart where supported.                    |
+| **7** | Backend validation | Checks exclusions, quantities, item prices, and estimated total; flags missing data. |
+| **8** | Frontend review    | Displays the plan and cart so the user can edit and decide what to do next.          |
+
+## **Suggested backend endpoints**
+
+| **Endpoint**                           | **Purpose**                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------- |
+| **GET /api/profile**                   | Return the authenticated user's saved grocery profile.                    |
+| **PUT /api/profile**                   | Create or update preferences and pantry inventory.                        |
+| **POST /api/shopping-tasks**           | Create a new shopping request and start the planning / agent workflow.    |
+| **GET /api/shopping-tasks/:id**        | Retrieve progress and results for a task owned by the authenticated user. |
+| **PATCH /api/shopping-tasks/:id/cart** | Apply user-approved cart edits, such as removing or replacing an item.    |
+
+## **Potential database tables**
+
+Keep the initial data model small. A reasonable starting point is:
+
+- users — application account reference / Auth0 subject identifier.
+- user_preferences — budget defaults, household size, food preferences, exclusions, retailer, and cooking preferences.
+- pantry_items — optional inventory of ingredients already available.
+- shopping_tasks — task owner, request, status, timestamps, and summary.
+- shopping_items — ingredient or product details, quantity, price, selected retailer item, and cart status.
+
+# **5\. MVP scope and implementation plan**
+
+The largest project risk is spending most of the hackathon building meal-planning features while leaving too little time to make the TinyFish browser workflow reliable. Start with the narrowest end-to-end path and expand only after it works.
+
+## **MVP — build these first**
+
+| **Priority** | **Feature**            | **Definition of done**                                                                        |
+| ------------ | ---------------------- | --------------------------------------------------------------------------------------------- |
+| **P0**       | Auth0 sign-in          | A user can sign in and reach protected application screens.                                   |
+| **P0**       | Shopping request form  | User can set a budget, household size, period, dietary preferences, exclusions, and retailer. |
+| **P0**       | Meal / ingredient plan | AI returns a structured plan and consolidated ingredient list.                                |
+| **P0**       | Live TinyFish research | Agent searches a real retailer and returns useful product information.                        |
+| **P0**       | Cart population        | Agent adds selected products to the retailer cart where supported.                            |
+| **P0**       | Review screen          | User sees selected items, quantities, prices, total estimate, and can remove / replace items. |
+| **P1**       | Saved profile          | Preferences persist for the signed-in user.                                                   |
+| **P1**       | Pantry inventory       | Existing pantry items reduce unnecessary purchases.                                           |
+
+## **Stretch features — only after the MVP works**
+
+- Compare products or prices across a second retailer.
+- Recommend lower-cost alternatives when the cart exceeds budget.
+- Save previous carts and reuse shopping preferences.
+- Track spending trends over time.
+- Monitor price changes and suggest when to buy an item.
+- Generate recipe ideas from pantry ingredients.
+
+## **Suggested build order**
+
+| **Phase**                      | **Focus**                                                                                              | **Checkpoint**                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| **1\. Prove the agent**        | Choose one retailer and test TinyFish product search and cart interaction before building the full UI. | A repeatable browser task works on the target site.         |
+| **2\. Build the secure shell** | Set up React, Express, Auth0, protected routes, and user-scoped profile storage.                       | A signed-in user can save and reload their own preferences. |
+| **3\. Add planning logic**     | Generate structured meal plans and ingredients; deduplicate quantities and apply exclusions.           | A sample request produces a coherent grocery list.          |
+| **4\. Connect TinyFish**       | Send shopping tasks to the agent; normalize returned products and cart results.                        | A complete request produces a reviewable retailer cart.     |
+| **5\. Polish the demo**        | Add progress states, errors, clear totals, and user-controlled cart edits.                             | The team can demo the full happy path reliably.             |
+
+**SCOPE GUARDRAIL**
+
+Start with one retailer, one shopping request type, and one successful cart-building path. A reliable end-to-end demo is more compelling than several partially working integrations.
+
+# **6\. Demo story, judging strategy, and risks**
+
+## **Suggested live demo script**
+
+| **Demo beat**                 | **What to show / say**                                                                                                                   |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **1\. Introduce the problem** | "Planning groceries means choosing meals, checking ingredients, comparing products, and staying on budget. CartPilot handles that work." |
+| **2\. Authenticate**          | Sign in through Auth0 and show that the app is displaying the signed-in user's profile.                                                  |
+| **3\. Submit a request**      | Enter a realistic budget, household size, food preferences, exclusions, and target retailer.                                             |
+| **4\. Show the plan**         | Display the meal plan and consolidated ingredient list. Explain how pantry items and exclusions are applied.                             |
+| **5\. Show TinyFish live**    | Make the browser activity visible: product search, page navigation, product selection, and cart additions.                               |
+| **6\. Review the result**     | Show the cart, item prices, quantities, estimated total, substitutions, and any unavailable items.                                       |
+| **7\. Emphasize control**     | Demonstrate removing or replacing an item and explain that the user reviews the cart before manually continuing to checkout.             |
+
+## **What to emphasize to each sponsor**
+
+| **Sponsor**  | **Strongest message**                                                                                                            | **Demo evidence**                                                                       |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **TinyFish** | CartPilot hires an AI employee to perform a real browser-based grocery-shopping task end to end.                                 | Show the live website interaction and a populated retailer cart.                        |
+| **Auth0**    | CartPilot secures user identity and ensures profiles and shopping tasks are tied to the right user, with controlled permissions. | Show login, protected profile access, and backend authorization for a user-scoped task. |
+
+## **Key risks and mitigations**
+
+| **Risk**                                            | **Mitigation**                                                                                                       |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **Retailer website changes or blocks automation**   | Test the retailer at the start; choose a stable, accessible site and keep a fallback demo scenario.                  |
+| **Login or checkout is inaccessible to automation** | Keep the MVP focused on product discovery and cart population where supported; do not automate payment.              |
+| **Prices or stock change**                          | Treat prices as estimates, show when data was retrieved if possible, and re-check before the user proceeds.          |
+| **Budget is impossible to meet**                    | Explain the shortfall and present choices such as removing items or choosing lower-cost alternatives.                |
+| **Agent selects unsuitable products**               | Use backend validation for hard constraints and let the user inspect every item before proceeding.                   |
+| **Allergy or ingredient data is incomplete**        | Display a clear verification warning; do not guarantee allergen safety based only on web data.                       |
+| **Auth or API secrets leak**                        | Store secrets server-side, validate tokens, avoid logging credentials, and scope access to the authenticated user.   |
+| **Too much scope**                                  | Prioritize a single reliable retailer workflow and defer comparisons, recurring tasks, and advanced personalization. |
+
+## **TinyFish track submission reminder**
+
+**REQUIRED PROMOTION STEP FROM THE TRACK BRIEF**
+
+Post the project demo on X or LinkedIn and tag TinyFish. Confirm the exact tag / account and any submission details from the current HackWestern track instructions before posting.
+
+# **7\. Final checklist and reference links**
+
+## **Before the hackathon demo**
+
+**☐** Auth0 sign-in works; the backend validates access tokens and scopes each profile and shopping task to the authenticated user.
+
+**☐** The request captures budget, household size, shopping period, preferences, exclusions, and retailer; AI returns a structured meal plan and consolidated ingredient list.
+
+**☐** TinyFish interacts with a real retailer website, finds products, and adds selected items to a cart where supported.
+
+**☐** The review screen shows products, quantities, prices, substitutions, and an estimated total; users can edit items and see warnings about missing data, price uncertainty, budget overruns, and allergy verification.
+
+**☐** The user remains in control of checkout and payment; the demo is rehearsed with a fallback plan and posted on X or LinkedIn with TinyFish tagged as required.
+
+## **Official and project resources**
+
+[Auth0 docs](https://auth0.com/docs) | [Auth0 AI Agents track](https://mlh.link/auth0-ai-agents) | [Auth0 sign-up](https://mlh.link/auth0-signup) | [TinyFish student credits](https://tinyfish.ai/students) | [TinyFish docs](https://docs.tinyfish.ai)
+</pasted_content id="d329">
+
+ Let me know if you have any comments or chagnes I should make before proceeding
+
+---
+
+Also! I want this to be spefically for the Walmart.ca shopping not just any grocery
+
+---
+
+I do have a walmart.ca account but do not confirm any purchases so option 1
+
+---
+
+I was able to login to walmart.ca on the Tinyfish browser
+
+---
+
+I checked and walmart has strong bot checking so I am trying tnt I made an account already please try this instead
+
+---
+
+I was able to sign in and set a postal code
+
+---
+
+/goal Start the next phase of the project for an express backend that checks Auth0 tokens, an Auth0 API, and saved user profiles.
+
+---
+
+Does this help Add Auth0 to my app using the onboarding tool from the Auth0 MCP
+
+---
+
+6b01fb1f4dce81189d8307b0 I believe this is the API key that is missing I filled in the other permissions as well let me know if this works?
+
+---
+
+Done
+
+---
+
+Done
+
+---
+
+<task-notification>
+<task-id>bcezfojcf</task-id>
+<tool-use-id>toolu_0124MX1E13EFSVhUMCBxkcGA</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-mglean-HackWestern/942be125-d035-4c37-9952-22ef3cc914ed/tasks/bcezfojcf.output</output-file>
+<status>failed</status>
+<summary>Background command "Start web app and API dev servers" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+Everything works as expected. What should be nexts steps?
+
+---
+
+Commit changes to the repo add details to the readme explaining what the project is
