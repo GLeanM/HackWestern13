@@ -1,0 +1,151 @@
+{
+  "cli_version": "0.13.4",
+  "checkpoint_id": "01M801EZW50WTDVC6N7YB83WGP",
+  "session_id": "942be125-d035-4c37-9952-22ef3cc914ed",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-21T21:51:10.61254Z",
+  "branch": "phase-3-meal-planner",
+  "checkpoints_count": 4,
+  "save_step_count": 1,
+  "files_touched": [
+    ".env.example",
+    "README.md",
+    "server/app.js",
+    "server/app.test.js",
+    "server/db.js",
+    "server/index.js",
+    "server/planner/consolidate.js",
+    "server/planner/consolidate.test.js",
+    "server/planner/gemini.js",
+    "server/planner/mealPlan.js",
+    "server/tasks.js",
+    "src/App.jsx",
+    "src/PlanPanel.jsx",
+    "src/ProfileForm.jsx",
+    "src/styles.css"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "500468d4bf10",
+  "checkpoint_transcript_start": 790,
+  "transcript_lines_at_start": 790,
+  "compact_transcript_start": 85,
+  "token_usage": {
+    "input_tokens": 60,
+    "cache_creation_tokens": 46357,
+    "cache_read_tokens": 4573735,
+    "output_tokens": 35782,
+    "api_call_count": 27
+  },
+  "session_token_usage": {
+    "input_tokens": 224,
+    "cache_creation_tokens": 242287,
+    "cache_read_tokens": 11350543,
+    "output_tokens": 82906,
+    "api_call_count": 90
+  },
+  "redaction": {
+    "replacements": 88,
+    "layers": {
+      "betterleaks": 18,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 12,
+      "credentialed_uri": 0,
+      "entropy": 78,
+      "key_context": 0,
+      "provider_token": 16,
+      "shell_stdin": 0
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-goal-2026-11-21T20:06:23.680902Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "goal"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "809f89022132",
+      "timestamp": "2026-11-21T20:06:23.680902Z",
+      "native": {
+        "command": "/goal"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/goal",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01Rxvr1AxEYPijtKMCymBEBS",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "tinyfish:tinyfish-automation"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "1e8b63083b17",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 135,
+        "end": 136,
+        "entry_ids": [
+          "993f358d-ecf0-4336-9005-17184513625c"
+        ],
+        "tool_use_id": "toolu_01Rxvr1AxEYPijtKMCymBEBS"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Rxvr1AxEYPijtKMCymBEBS"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: tinyfish:tinyfish-automation",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01LTrUFQRFL6z9g9DwXie3ws",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "tinyfish:tinyfish-authenticated"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "1e8b63083b17",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 182,
+        "end": 183,
+        "entry_ids": [
+          "ab1c6079-4dfa-4f28-9f6e-6b967d754016"
+        ],
+        "tool_use_id": "toolu_01LTrUFQRFL6z9g9DwXie3ws"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01LTrUFQRFL6z9g9DwXie3ws"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: tinyfish:tinyfish-authenticated",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 15
+  }
+}

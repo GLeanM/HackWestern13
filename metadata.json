@@ -1,0 +1,54 @@
+{
+  "cli_version": "0.13.4",
+  "checkpoint_id": "01M801EZW50WTDVC6N7YB83WGP",
+  "strategy": "manual-commit",
+  "branch": "phase-3-meal-planner",
+  "checkpoints_count": 4,
+  "files_touched": [
+    ".env.example",
+    "README.md",
+    "server/app.js",
+    "server/app.test.js",
+    "server/db.js",
+    "server/index.js",
+    "server/planner/consolidate.js",
+    "server/planner/consolidate.test.js",
+    "server/planner/gemini.js",
+    "server/planner/mealPlan.js",
+    "server/tasks.js",
+    "src/App.jsx",
+    "src/PlanPanel.jsx",
+    "src/ProfileForm.jsx",
+    "src/styles.css"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 60,
+    "cache_creation_tokens": 46357,
+    "cache_read_tokens": 4573735,
+    "output_tokens": 35782,
+    "api_call_count": 27
+  },
+  "redaction": {
+    "replacements": 88,
+    "layers": {
+      "betterleaks": 18,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 12,
+      "credentialed_uri": 0,
+      "entropy": 78,
+      "key_context": 0,
+      "provider_token": 16,
+      "shell_stdin": 0
+    }
+  }
+}

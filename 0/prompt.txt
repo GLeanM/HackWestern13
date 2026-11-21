@@ -1,0 +1,14 @@
+Can you make the branch and push the changes
+
+---
+
+Can you open the pull request and then push everything to the repo
+
+---
+
+Im just going to paste the API keys here. Im using google gemini's api key instead of Claude: REDACTED
+REDACTED and start work on the next phase, the meal planner
+
+---
+
+Everything looks right and is working fine, can you put up a PR and commit and push these changes
