@@ -14,6 +14,35 @@ const AUDIENCE = "https://cartpilot-api";
 const KID = "test-key";
 let server, jwksServer, base, privateKey, db;
 
+// Tests swap this to control what the "LLM" returns.
+const SAMPLE_PLAN = {
+  summary: "Quick Korean-inspired week.",
+  estimatedTotal: 72,
+  model: "fake",
+  meals: [
+    { day: 1, slot: "dinner", name: "Bibimbap", servings: 1, prepMinutes: 25, leftoversFromDay: 0, ingredients: [
+      { name: "jasmine rice", quantity: 150, unit: "g", category: "pantry" },
+      { name: "eggs", quantity: 1, unit: "count", category: "dairy-eggs" },
+      { name: "spinach", quantity: 100, unit: "g", category: "produce" },
+    ] },
+    { day: 2, slot: "breakfast", name: "Egg fried rice", servings: 1, prepMinutes: 10, leftoversFromDay: 0, ingredients: [
+      { name: "Egg", quantity: 2, unit: "count", category: "dairy-eggs" },
+      { name: "rice vinegar", quantity: 15, unit: "ml", category: "condiments-sauces" },
+      { name: "peanuts", quantity: 20, unit: "g", category: "pantry" },
+    ] },
+  ],
+};
+let fakePlanner = async () => SAMPLE_PLAN;
+const waitFor = async (fn, ms = 2000) => {
+  const end = Date.now() + ms;
+  for (;;) {
+    const v = await fn();
+    if (v) return v;
+    if (Date.now() > end) throw new Error("timed out waiting");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+};
+
 const listen = (srv) => new Promise((r) => srv.listen(0, "127.0.0.1", r));
 
 before(async () => {
@@ -35,6 +64,8 @@ before(async () => {
       tokenSigningAlg: "RS256",
     },
     db,
+    planner: (...args) => fakePlanner(...args),
+    log: { error() {} },
   });
   server = createServer(app);
   await listen(server);
@@ -152,4 +183,92 @@ test("invalid profiles are rejected with field errors", async () => {
 
   const malformed = await call("PUT", "/api/profile", { tok, body: "{not json" });
   assert.equal(malformed.status, 400);
+});
+
+// --- Shopping tasks ---------------------------------------------------------
+
+test("tasks need a token and a saved profile", async () => {
+  assert.equal((await call("POST", "/api/shopping-tasks", { body: {} })).status, 401);
+  const tok = await token("auth0|no-profile");
+  const res = await call("POST", "/api/shopping-tasks", { tok, body: {} });
+  assert.equal(res.status, 409);
+  assert.equal(res.json.error, "profile_required");
+});
+
+test("planning a task: 202, then planned with a consolidated list", async () => {
+  const tok = await token("auth0|planner");
+  await call("PUT", "/api/profile", { tok, body: goodProfile }); // pantry: rice, soy sauce; allergy: peanuts
+  const created = await call("POST", "/api/shopping-tasks", { tok, body: { note: "more veggies" } });
+  assert.equal(created.status, 202);
+  assert.equal(created.json.task.status, "planning");
+  assert.equal(created.json.task.input.note, "more veggies");
+
+  const task = await waitFor(async () => {
+    const r = await call("GET", `/api/shopping-tasks/${created.json.task.id}`, { tok });
+    return r.json.task.status !== "planning" && r.json.task;
+  });
+  assert.equal(task.status, "planned");
+  const names = task.result.toBuy.map((i) => i.name);
+  // eggs merged across meals (1 + 2), rice covered by pantry, rice vinegar still bought, peanuts removed.
+  assert.deepEqual(task.result.toBuy.find((i) => i.name === "eggs").quantities, [{ amount: 3, unit: "count" }]);
+  assert.ok(names.includes("rice vinegar"));
+  assert.ok(!names.includes("jasmine rice"));
+  assert.equal(task.result.pantryCovered[0].name, "jasmine rice");
+  assert.equal(task.result.removed[0].name, "peanuts");
+  assert.ok(task.result.warnings.some((w) => w.type === "allergy"));
+
+  const list = await call("GET", "/api/shopping-tasks", { tok });
+  assert.equal(list.json.tasks[0].id, task.id);
+});
+
+test("only one plan at a time per user", async () => {
+  const tok = await token("auth0|busy");
+  await call("PUT", "/api/profile", { tok, body: goodProfile });
+  let release;
+  fakePlanner = () => new Promise((r) => (release = () => r(SAMPLE_PLAN)));
+  try {
+    assert.equal((await call("POST", "/api/shopping-tasks", { tok, body: {} })).status, 202);
+    const second = await call("POST", "/api/shopping-tasks", { tok, body: {} });
+    assert.equal(second.status, 409);
+    assert.equal(second.json.error, "task_in_progress");
+  } finally {
+    release();
+    fakePlanner = async () => SAMPLE_PLAN;
+  }
+});
+
+test("planner failure marks the task failed without leaking details", async () => {
+  const tok = await token("auth0|fails");
+  await call("PUT", "/api/profile", { tok, body: goodProfile });
+  fakePlanner = async () => { throw new Error("HTTP 503 secret-ish upstream detail"); };
+  try {
+    const created = await call("POST", "/api/shopping-tasks", { tok, body: {} });
+    const task = await waitFor(async () => {
+      const r = await call("GET", `/api/shopping-tasks/${created.json.task.id}`, { tok });
+      return r.json.task.status !== "planning" && r.json.task;
+    });
+    assert.equal(task.status, "failed");
+    assert.ok(!task.error.includes("503"));
+  } finally {
+    fakePlanner = async () => SAMPLE_PLAN;
+  }
+});
+
+test("users cannot read each other's tasks", async () => {
+  const owner = await token("auth0|task-owner");
+  const other = await token("auth0|task-other");
+  await call("PUT", "/api/profile", { tok: owner, body: goodProfile });
+  const created = await call("POST", "/api/shopping-tasks", { tok: owner, body: {} });
+  const id = created.json.task.id;
+  assert.equal((await call("GET", `/api/shopping-tasks/${id}`, { tok: other })).status, 404);
+  assert.equal((await call("GET", "/api/shopping-tasks/not-a-uuid", { tok: owner })).status, 404);
+  assert.deepEqual((await call("GET", "/api/shopping-tasks", { tok: other })).json.tasks, []);
+});
+
+test("task input is validated", async () => {
+  const tok = await token("auth0|task-val");
+  await call("PUT", "/api/profile", { tok, body: goodProfile });
+  const bad = await call("POST", "/api/shopping-tasks", { tok, body: { note: "x".repeat(501), sub: "auth0|other" } });
+  assert.equal(bad.status, 400);
+  assert.deepEqual(Object.keys(bad.json.fields).sort(), ["note", "sub"]);
 });

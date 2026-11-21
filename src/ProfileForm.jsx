@@ -23,7 +23,7 @@ function fromForm(form) {
   return body;
 }
 
-export default function ProfileForm() {
+export default function ProfileForm({ onSaved = () => {} }) {
   const api = useApi();
   const [form, setForm] = useState(null);
   const [status, setStatus] = useState({ kind: "loading" });
@@ -34,6 +34,7 @@ export default function ProfileForm() {
       .then(({ profile, saved }) => {
         setForm(toForm(profile));
         setStatus(saved ? { kind: "saved", at: profile.updatedAt } : { kind: "new" });
+        onSaved(saved);
       })
       .catch((e) => setStatus({ kind: "error", message: describe(e) }));
   }, [api]);
@@ -48,6 +49,7 @@ export default function ProfileForm() {
       const { profile } = await api("/profile", { method: "PUT", body: fromForm(form) });
       setForm(toForm(profile));
       setStatus({ kind: "saved", at: profile.updatedAt });
+      onSaved(true);
     } catch (err) {
       if (err.body?.fields) setFieldErrors(err.body.fields);
       setStatus({ kind: "error", message: describe(err) });
@@ -69,7 +71,8 @@ export default function ProfileForm() {
 
   return (
     <form onSubmit={onSubmit} className="card">
-      <h2>Your grocery profile</h2>
+      <details open={status.kind !== "saved"}>
+      <summary><h2>Your grocery profile</h2></summary>
       <div className="grid">
         {field("budget", "Budget ($ CAD)", <input type="number" min="10" step="1" value={form.budget} onChange={set("budget")} />)}
         {field("householdSize", "People", <input type="number" min="1" max="12" value={form.householdSize} onChange={set("householdSize")} />)}
@@ -103,6 +106,7 @@ export default function ProfileForm() {
         </button>
         <StatusLine status={status} />
       </div>
+      </details>
     </form>
   );
 }

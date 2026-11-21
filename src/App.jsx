@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import ProfileForm from "./ProfileForm.jsx";
+import PlanPanel from "./PlanPanel.jsx";
 
 function App() {
+  const [profileSaved, setProfileSaved] = useState(false);
   const { isLoading, isAuthenticated, error, loginWithRedirect: login, logout: auth0Logout, user } = useAuth0();
 
   const signup = () => login({ authorizationParams: { screen_hint: "signup" } });
@@ -22,7 +25,10 @@ function App() {
       </header>
 
       {isAuthenticated ? (
-        <ProfileForm />
+        <>
+          <ProfileForm onSaved={setProfileSaved} />
+          <PlanPanel profileSaved={profileSaved} />
+        </>
       ) : (
         <section className="card">
           <p>Your personal grocery-shopping agent for T&amp;T Supermarket.</p>
