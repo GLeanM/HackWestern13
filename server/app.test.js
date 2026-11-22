@@ -33,6 +33,8 @@ const SAMPLE_PLAN = {
   ],
 };
 let fakePlanner = async () => SAMPLE_PLAN;
+const SAMPLE_RESEARCH = { items: [], total: 12.34, budget: 100, overBudget: false, warnings: [] };
+let fakeResearcher = async () => SAMPLE_RESEARCH;
 const waitFor = async (fn, ms = 2000) => {
   const end = Date.now() + ms;
   for (;;) {
@@ -65,6 +67,7 @@ before(async () => {
     },
     db,
     planner: (...args) => fakePlanner(...args),
+    researcher: (...args) => fakeResearcher(...args),
     log: { error() {} },
   });
   server = createServer(app);
@@ -271,4 +274,90 @@ test("task input is validated", async () => {
   const bad = await call("POST", "/api/shopping-tasks", { tok, body: { note: "x".repeat(501), sub: "auth0|other" } });
   assert.equal(bad.status, 400);
   assert.deepEqual(Object.keys(bad.json.fields).sort(), ["note", "sub"]);
+});
+
+// --- Pricing on T&T ---------------------------------------------------------
+
+async function plannedTask(sub) {
+  const tok = await token(sub);
+  await call("PUT", "/api/profile", { tok, body: goodProfile });
+  const created = await call("POST", "/api/shopping-tasks", { tok, body: {} });
+  const id = created.json.task.id;
+  await waitFor(async () => (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task.status === "planned");
+  return { tok, id };
+}
+const settled = (tok, id) =>
+  waitFor(async () => {
+    const t = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task;
+    return t.status !== "researching" && t;
+  });
+
+test("pricing a planned task: 202 → priced, plan kept", async () => {
+  const { tok, id } = await plannedTask("auth0|pricer");
+  let seen;
+  fakeResearcher = async (toBuy, profile) => ((seen = { toBuy, profile }), SAMPLE_RESEARCH);
+  try {
+    const res = await call("POST", `/api/shopping-tasks/${id}/research`, { tok });
+    assert.equal(res.status, 202);
+    assert.equal(res.json.task.status, "researching");
+    const task = await settled(tok, id);
+    assert.equal(task.status, "priced");
+    assert.equal(task.result.research.total, 12.34);
+    assert.ok(task.result.meals.length > 0);
+    assert.ok(seen.toBuy.some((i) => i.name === "eggs"));
+    assert.equal(seen.profile.budget, 100);
+    // Re-pricing a priced task is allowed.
+    assert.equal((await call("POST", `/api/shopping-tasks/${id}/research`, { tok })).status, 202);
+    await settled(tok, id);
+  } finally {
+    fakeResearcher = async () => SAMPLE_RESEARCH;
+  }
+});
+
+test("pricing failure returns the task to its previous state with a message", async () => {
+  const { tok, id } = await plannedTask("auth0|price-fail");
+  fakeResearcher = async () => { throw new Error("TinyFish fetch failed: SERVICE_BUSY"); };
+  try {
+    await call("POST", `/api/shopping-tasks/${id}/research`, { tok });
+    const task = await settled(tok, id);
+    assert.equal(task.status, "planned");
+    assert.ok(task.result.toBuy.length > 0);
+    assert.ok(task.error && !task.error.includes("SERVICE_BUSY"));
+  } finally {
+    fakeResearcher = async () => SAMPLE_RESEARCH;
+  }
+});
+
+test("pricing: other users get 404, unfinished plans 409, one at a time", async () => {
+  const { tok, id } = await plannedTask("auth0|price-owner");
+  const other = await token("auth0|price-other");
+  assert.equal((await call("POST", `/api/shopping-tasks/${id}/research`, { tok: other })).status, 404);
+  assert.equal((await call("POST", `/api/shopping-tasks/${id}/research`)).status, 401);
+
+  let release;
+  fakeResearcher = () => new Promise((r) => (release = () => r(SAMPLE_RESEARCH)));
+  try {
+    assert.equal((await call("POST", `/api/shopping-tasks/${id}/research`, { tok })).status, 202);
+    const again = await call("POST", `/api/shopping-tasks/${id}/research`, { tok });
+    assert.equal(again.status, 409);
+    // A new plan can't start while pricing runs either.
+    assert.equal((await call("POST", "/api/shopping-tasks", { tok, body: {} })).status, 409);
+  } finally {
+    release();
+    fakeResearcher = async () => SAMPLE_RESEARCH;
+  }
+  await settled(tok, id);
+
+  let hold;
+  fakePlanner = () => new Promise((r) => (hold = () => r(SAMPLE_PLAN)));
+  try {
+    const tok2 = await token("auth0|price-early");
+    await call("PUT", "/api/profile", { tok: tok2, body: goodProfile });
+    const created = await call("POST", "/api/shopping-tasks", { tok: tok2, body: {} });
+    const early = await call("POST", `/api/shopping-tasks/${created.json.task.id}/research`, { tok: tok2 });
+    assert.equal(early.status, 409);
+  } finally {
+    hold();
+    fakePlanner = async () => SAMPLE_PLAN;
+  }
 });

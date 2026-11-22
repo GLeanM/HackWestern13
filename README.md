@@ -16,7 +16,7 @@ Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&
 1. **Sign in.** Auth0 handles sign-up and login. The React app gets an access token for the CartPilot API.
 2. **Profile.** Budget, people, days, diet, cuisines, allergies, foods to skip, nutrition and cooking preferences, postal code, and pantry. Saved per user.
 3. **Plan.** Google Gemini (structured JSON output) produces a structured meal plan and ingredient list. Server code (not the LLM) merges duplicates, removes pantry items and exclusions.
-4. **Research.** TinyFish reads T&T search results for each ingredient: name, package size, price. Server code picks the best match by unit price, package size and exclusions, then totals the cart against the budget.
+4. **Research.** TinyFish Fetch reads T&T's search page for every item at once (about 30–40s for a full list). Server code parses the results, screens out allergens and "different foods" (quail eggs aren't eggs), picks the cheapest pack that covers the recipe quantity, retries simpler searches when nothing matches, and totals the cart against the budget.
 5. **Review.** You swap or remove items, see the total and any warnings (over budget, unavailable, allergy check).
 6. **Build cart.** After you approve, a TinyFish agent signed in to your T&T account adds exactly those products to the cart. It is explicitly told never to check out or pay.
 
@@ -34,8 +34,8 @@ Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&
 | 1. Prove the agent on a real retailer | ✅ T&T search reading and add-to-cart verified (Walmart.ca was dropped: its bot check blocked cart actions) |
 | 2. Secure shell: Express API, Auth0 tokens, saved profiles | ✅ Done, tested with a real login |
 | 3. Meal planner (Gemini → consolidated shopping list) | ✅ Done |
-| 4. Product research | ⏳ Next |
-| 5. Review, approve, build cart | ⏳ |
+| 4. Product research and pricing on T&T (TinyFish Fetch) | ✅ Done |
+| 5. Review, approve, build cart | ⏳ Next |
 | 6. Polish and demo backup | ⏳ |
 
 ## Tech stack
@@ -54,6 +54,7 @@ src/
   App.jsx           Login / logout shell
   ProfileForm.jsx   Load and save the grocery profile
   PlanPanel.jsx     Start a plan, poll it, show meals and the shopping list
+  PriceTable.jsx    T&T products, prices, total vs budget, alternatives and flags
   api.js            fetch wrapper that attaches the Auth0 access token
 server/
   index.js          Reads env, opens the DB, starts the API
@@ -65,7 +66,13 @@ server/
     gemini.js       Gemini REST client: structured JSON, retries, model fallback
     mealPlan.js     Prompt + JSON schema for the meal plan
     consolidate.js  Merges ingredients, removes pantry/allergy/avoid/diet items, warnings
-  app.test.js       API tests (auth, scopes, isolation, validation, tasks)
+  research/
+    tinyfish.js     TinyFish Fetch client: batches of 10 URLs, retries failed URLs
+    tntParser.js    Parses T&T search results (prices, sales, per-lb, sizes, deals, links)
+    match.js        Picks the right product: relevance, allergy/diet screening, cheapest pack that covers the need
+    research.js     Prices the whole list, retries simpler searches, totals vs budget
+    fixtures/       Real T&T search results used by the tests
+  app.test.js       API tests (auth, scopes, isolation, validation, tasks, pricing)
 ```
 
 ## API
@@ -79,7 +86,8 @@ All `/api/*` routes except health need `Authorization: Bearer <Auth0 access toke
 | PUT | `/api/profile` | `write:profile` | Validate and save your profile |
 | POST | `/api/shopping-tasks` | `read:profile` | Start a meal plan from your saved profile (+ optional `note`). Returns `202` with a task in `planning` state |
 | GET | `/api/shopping-tasks` | `read:profile` | Your 10 most recent tasks |
-| GET | `/api/shopping-tasks/:id` | `read:profile` | One of your tasks: meals, shopping list, pantry-covered items, removed items, warnings. Other users' tasks are `404` |
+| GET | `/api/shopping-tasks/:id` | `read:profile` | One of your tasks: meals, shopping list, pantry-covered items, removed items, warnings, and T&T prices once found. Other users' tasks are `404` |
+| POST | `/api/shopping-tasks/:id/research` | `read:profile` | Look up every list item on T&T and price it (read-only; nothing is added to a cart). Returns `202` with status `researching`, then `priced` |
 
 Errors: `401` bad or missing token, `403` missing scope, `400` invalid input (with per-field messages), `409` no saved profile yet or a plan already in progress.
 

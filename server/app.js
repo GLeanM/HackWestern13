@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { auth, requiredScopes } from "express-oauth2-jwt-bearer";
 import { validateProfile, DEFAULT_PROFILE } from "./profile.js";
-import { validateTaskInput, startPlanningTask } from "./tasks.js";
+import { validateTaskInput, startPlanningTask, startResearchTask } from "./tasks.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -18,9 +18,10 @@ export const SCOPES = {
  *        (production: { issuerBaseURL, audience }; tests inject a local key).
  * @param {object} opts.db           store from openDb()
  * @param {Function} opts.planner    async (profile, note) => plan (see planner/mealPlan.js)
+ * @param {Function} opts.researcher async (toBuy, profile) => research (see research/research.js)
  * @param {string[]} [opts.corsOrigins]
  */
-export function createApp({ authOptions, db, planner, corsOrigins = [], log = console }) {
+export function createApp({ authOptions, db, planner, researcher, corsOrigins = [], log = console }) {
   const app = express();
   app.disable("x-powered-by");
   app.use(cors({ origin: corsOrigins, allowedHeaders: ["Authorization", "Content-Type"] }));
@@ -78,6 +79,26 @@ export function createApp({ authOptions, db, planner, corsOrigins = [], log = co
     const task = UUID_RE.test(req.params.id) ? db.getTask(userSub(req), req.params.id) : null;
     if (!task) return res.status(404).json({ error: "not_found" });
     res.json({ task });
+  });
+
+  // Look up and price the task's shopping list on T&T (read-only web research;
+  // nothing is added to any cart here).
+  api.post("/shopping-tasks/:id/research", requiredScopes(SCOPES.readProfile), (req, res) => {
+    const sub = userSub(req);
+    const task = UUID_RE.test(req.params.id) ? db.getTask(sub, req.params.id) : null;
+    if (!task) return res.status(404).json({ error: "not_found" });
+    if (task.status !== "planned" && task.status !== "priced") {
+      return res.status(409).json({ error: "not_ready", message: "This plan isn't ready to price yet." });
+    }
+    if (!task.result?.toBuy?.length) {
+      return res.status(409).json({ error: "empty_list", message: "There's nothing on this shopping list to price." });
+    }
+    if (db.activeTaskCount(sub) > 0 || !db.claimResearch(sub, task.id)) {
+      return res.status(409).json({ error: "task_in_progress", message: "Something is already running. Wait for it to finish." });
+    }
+    const { updatedAt: _ignored, ...profile } = db.getProfile(sub) ?? task.input.profile;
+    startResearchTask({ db, researcher, sub, task, profile, log });
+    res.status(202).json({ task: db.getTask(sub, task.id) });
   });
 
   app.use("/api", api);
