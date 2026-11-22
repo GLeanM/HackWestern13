@@ -2,14 +2,17 @@ import express from "express";
 import cors from "cors";
 import { auth, requiredScopes } from "express-oauth2-jwt-bearer";
 import { validateProfile, DEFAULT_PROFILE } from "./profile.js";
-import { validateTaskInput, startPlanningTask, startResearchTask, selectionsOf, withReview } from "./tasks.js";
-import { applyEdits, defaultSelection } from "./review/cart.js";
+import { validateTaskInput, startPlanningTask, startResearchTask, startCartBuild, selectionsOf, withReview } from "./tasks.js";
+import { applyEdits, defaultSelection, summarize } from "./review/cart.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export const SCOPES = {
   readProfile: "read:profile",
   writeProfile: "write:profile",
+  // Lets CartPilot's agent change the user's real T&T cart. Requested by the
+  // browser only at the moment the user approves (step-up consent).
+  buildCart: "build:cart",
 };
 
 /**
@@ -20,9 +23,10 @@ export const SCOPES = {
  * @param {object} opts.db           store from openDb()
  * @param {Function} opts.planner    async (profile, note) => plan (see planner/mealPlan.js)
  * @param {Function} opts.researcher async (toBuy, profile) => research (see research/research.js)
+ * @param {Function|null} opts.cartBuilder async (cartRun, save) => cartRun (see cart/buildCart.js); null disables cart building
  * @param {string[]} [opts.corsOrigins]
  */
-export function createApp({ authOptions, db, planner, researcher, corsOrigins = [], log = console }) {
+export function createApp({ authOptions, db, planner, researcher, cartBuilder = null, corsOrigins = [], log = console }) {
   const app = express();
   app.disable("x-powered-by");
   app.use(cors({ origin: corsOrigins, allowedHeaders: ["Authorization", "Content-Type"] }));
@@ -56,8 +60,11 @@ export function createApp({ authOptions, db, planner, researcher, corsOrigins = 
     const sub = userSub(req);
     const task = UUID_RE.test(req.params.id) ? db.getTask(sub, req.params.id) : null;
     if (!task) return void res.status(404).json({ error: "not_found" });
-    if (task.status !== "priced") {
-      return void res.status(409).json({ error: "not_priced", message: "Find T&T prices for this plan first." });
+    if (task.status !== "priced" && task.status !== "built") {
+      const message = task.status === "building"
+        ? "The agent is building your cart. Wait for it to finish."
+        : "Find T&T prices for this plan first.";
+      return void res.status(409).json({ error: "not_priced", message });
     }
     if (busy.has(`${sub}:${task.id}`)) {
       return void res.status(409).json({ error: "search_in_progress", message: "Wait for the current search to finish." });
@@ -103,7 +110,7 @@ export function createApp({ authOptions, db, planner, researcher, corsOrigins = 
     const sub = userSub(req);
     const task = UUID_RE.test(req.params.id) ? db.getTask(sub, req.params.id) : null;
     if (!task) return res.status(404).json({ error: "not_found" });
-    if (task.status !== "planned" && task.status !== "priced") {
+    if (!["planned", "priced", "built"].includes(task.status)) {
       return res.status(409).json({ error: "not_ready", message: "This plan isn't ready to price yet." });
     }
     if (!task.result?.toBuy?.length) {
@@ -173,6 +180,42 @@ export function createApp({ authOptions, db, planner, researcher, corsOrigins = 
     } finally {
       busy.delete(key);
     }
+  });
+
+  // Approve & build cart. Needs the build:cart permission, which the browser
+  // asks for only when the user approves. The client must echo the total and
+  // item count it showed, so the agent only gets exactly what was approved.
+  api.post("/shopping-tasks/:id/build-cart", requiredScopes(SCOPES.buildCart), (req, res) => {
+    if (!cartBuilder) {
+      return res.status(503).json({ error: "cart_building_disabled", message: "Cart building isn't set up on this server." });
+    }
+    const body = req.body ?? {};
+    const keysOk = Object.keys(body).every((k) => k === "expectedTotal" || k === "expectedItems");
+    if (!keysOk || typeof body.expectedTotal !== "number" || !Number.isInteger(body.expectedItems)) {
+      return res.status(400).json({ error: "invalid_approval", message: "Send { expectedTotal, expectedItems } from the review you approved." });
+    }
+    const loaded = loadPriced(req, res);
+    if (!loaded) return;
+    const { sub, task } = loaded;
+    const review = summarize(task.result.research, selectionsOf(task.result), task.result.research.budget);
+    if (Math.abs(review.total - body.expectedTotal) > 0.005 || review.itemCount !== body.expectedItems) {
+      return res.status(409).json({ error: "stale_review", message: "Your cart changed since you reviewed it. Please check it and approve again." });
+    }
+    if (review.readyForAgent === 0) {
+      return res.status(409).json({ error: "nothing_to_add", message: "None of the items can be added by the agent (no product links)." });
+    }
+    if (db.activeTaskCount(sub) > 0 || !db.claimBuild(sub, task.id)) {
+      return res.status(409).json({ error: "task_in_progress", message: "Something is already running. Wait for it to finish." });
+    }
+    const approval = {
+      sub,
+      approvedAt: new Date().toISOString(),
+      scope: SCOPES.buildCart,
+      total: review.total,
+      itemCount: review.itemCount,
+    };
+    startCartBuild({ db, cartBuilder, sub, task, review, approval, log });
+    res.status(202).json({ task: withReview(db.getTask(sub, task.id)) });
   });
 
   app.use("/api", api);

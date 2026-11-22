@@ -35,6 +35,16 @@ const SAMPLE_PLAN = {
 let fakePlanner = async () => SAMPLE_PLAN;
 const SAMPLE_RESEARCH = { items: [], total: 12.34, budget: 100, overBudget: false, warnings: [] };
 let fakeResearcher = async () => SAMPLE_RESEARCH;
+// Pretends the agent added everything.
+const addAll = async (cartRun, save) => {
+  cartRun.runs = [{ batch: 0, runId: "run-1", status: "COMPLETED", streamingUrl: "https://stream.example/1" }];
+  for (const it of cartRun.items) (it.outcome = "added"), (it.quantityInCart = it.packages);
+  cartRun.status = "built";
+  cartRun.counts = { added: cartRun.items.length, outOfStock: 0, failed: 0, skipped: cartRun.skipped.length };
+  save(cartRun);
+  return cartRun;
+};
+let fakeCartBuilder = addAll;
 const waitFor = async (fn, ms = 2000) => {
   const end = Date.now() + ms;
   for (;;) {
@@ -68,6 +78,7 @@ before(async () => {
     db,
     planner: (...args) => fakePlanner(...args),
     researcher: (...args) => fakeResearcher(...args),
+    cartBuilder: (...args) => fakeCartBuilder(...args),
     log: { error() {} },
   });
   server = createServer(app);
@@ -475,4 +486,112 @@ test("re-pricing the whole list keeps removals", async () => {
   const after = await settled(tok, id);
   assert.equal(after.result.selections[1].removed, true);
   fakeResearcher = async () => SAMPLE_RESEARCH;
+});
+
+// --- Approve & build cart ----------------------------------------------------
+
+const CART_SCOPES = "read:profile write:profile build:cart";
+const approveBody = (task) => ({ expectedTotal: task.review.total, expectedItems: task.review.itemCount });
+const built = (tok, id) =>
+  waitFor(async () => {
+    const t = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task;
+    return t.status !== "building" && t;
+  });
+
+test("build-cart needs the build:cart permission", async () => {
+  const { tok, id } = await pricedTask("auth0|cart-noscope");
+  const task = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task;
+  const res = await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: approveBody(task) });
+  assert.equal(res.status, 403);
+  assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart`, { body: approveBody(task) })).status, 401);
+});
+
+test("approve → building → built, approval recorded, skipped lines listed", async () => {
+  const { id, task: priced } = await pricedTask("auth0|cart-ok");
+  const tok = await token("auth0|cart-ok", { scope: CART_SCOPES });
+  const name = priced.result.research.items[1].name;
+  await call("PATCH", `/api/shopping-tasks/${id}/cart`, { tok, body: { edits: [{ index: 1, name, removed: true }] } });
+  const task = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task;
+
+  let seen;
+  fakeCartBuilder = async (cartRun, save) => ((seen = structuredClone(cartRun)), addAll(cartRun, save));
+  try {
+    const res = await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: approveBody(task) });
+    assert.equal(res.status, 202);
+    assert.equal(res.json.task.status, "building");
+    const done = await built(tok, id);
+    assert.equal(done.status, "built");
+    const run = done.result.cartRun;
+    assert.equal(run.status, "built");
+    assert.equal(run.approval.sub, "auth0|cart-ok");
+    assert.equal(run.approval.scope, "build:cart");
+    assert.equal(run.approval.total, task.review.total);
+    assert.equal(run.items.length, task.review.itemCount);
+    assert.deepEqual(run.skipped, [{ index: 1, name, reason: "removed" }]);
+    // The agent got the reviewed product URLs and pack counts.
+    const line0 = task.review.lines[0];
+    assert.deepEqual([seen.items[0].url, seen.items[0].packages], [line0.product.url, line0.packages]);
+    // A built task still shows its review.
+    assert.equal(done.review.total, task.review.total);
+  } finally {
+    fakeCartBuilder = addAll;
+  }
+});
+
+test("build-cart rejects a stale review, other users, and bad bodies", async () => {
+  const { id } = await pricedTask("auth0|cart-stale");
+  const tok = await token("auth0|cart-stale", { scope: CART_SCOPES });
+  const task = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task;
+  const stale = await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: { ...approveBody(task), expectedTotal: task.review.total + 1 } });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.json.error, "stale_review");
+  const count = await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: { ...approveBody(task), expectedItems: 99 } });
+  assert.equal(count.json.error, "stale_review");
+  assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: { expectedTotal: "1" } })).status, 400);
+  assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: { ...approveBody(task), sub: "x" } })).status, 400);
+  const other = await token("auth0|cart-intruder", { scope: CART_SCOPES });
+  assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok: other, body: approveBody(task) })).status, 404);
+});
+
+test("build-cart: unpriced tasks 409, one build at a time, edits after a build return to priced", async () => {
+  const { tok: t1, id: planned } = await plannedTask("auth0|cart-early");
+  const early = await token("auth0|cart-early", { scope: CART_SCOPES });
+  assert.equal((await call("POST", `/api/shopping-tasks/${planned}/build-cart`, { tok: early, body: { expectedTotal: 0, expectedItems: 0 } })).status, 409);
+  void t1;
+
+  const { id } = await pricedTask("auth0|cart-once");
+  const tok = await token("auth0|cart-once", { scope: CART_SCOPES });
+  const task = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task;
+  let release;
+  fakeCartBuilder = (cartRun, save) => new Promise((r) => (release = () => r(addAll(cartRun, save))));
+  try {
+    assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: approveBody(task) })).status, 202);
+    assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: approveBody(task) })).status, 409);
+    const name = task.result.research.items[0].name;
+    assert.equal((await call("PATCH", `/api/shopping-tasks/${id}/cart`, { tok, body: { edits: [{ index: 0, name, removed: true }] } })).status, 409);
+    release();
+    await built(tok, id);
+  } finally {
+    fakeCartBuilder = addAll;
+  }
+  // Rebuild is allowed; editing a built cart sends it back to review.
+  const name = task.result.research.items[0].name;
+  const edited = await call("PATCH", `/api/shopping-tasks/${id}/cart`, { tok, body: { edits: [{ index: 0, name, packages: 4 }] } });
+  assert.equal(edited.json.task.status, "priced");
+  assert.equal(edited.json.task.result.cartRun.status, "built"); // last build kept for reference
+});
+
+test("a build that can't start restores the previous state with a message", async () => {
+  const { id } = await pricedTask("auth0|cart-fail");
+  const tok = await token("auth0|cart-fail", { scope: CART_SCOPES });
+  const task = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task;
+  fakeCartBuilder = async () => { throw Object.assign(new Error("402 raw detail"), { userMessage: "The TinyFish wallet is out of funds." }); };
+  try {
+    await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: approveBody(task) });
+    const after = await built(tok, id);
+    assert.equal(after.status, "priced");
+    assert.equal(after.error, "The TinyFish wallet is out of funds.");
+  } finally {
+    fakeCartBuilder = addAll;
+  }
 });

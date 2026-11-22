@@ -65,7 +65,7 @@ export function openDb(path) {
     "SELECT * FROM shopping_tasks WHERE sub = ? ORDER BY created_at DESC, rowid DESC LIMIT ?",
   );
   const countActive = db.prepare(
-    "SELECT COUNT(*) AS n FROM shopping_tasks WHERE sub = ? AND status IN ('planning', 'researching')",
+    "SELECT COUNT(*) AS n FROM shopping_tasks WHERE sub = ? AND status IN ('planning', 'researching', 'building')",
   );
   const finishTask = db.prepare(
     "UPDATE shopping_tasks SET status = ?, result = ?, error = ?, updated_at = datetime('now') WHERE id = ? AND sub = ?",
@@ -75,7 +75,7 @@ export function openDb(path) {
   );
   // Atomic "planned/priced → researching" so two clicks can't start two searches.
   const claimResearch = db.prepare(
-    "UPDATE shopping_tasks SET status = 'researching', error = NULL, updated_at = datetime('now') WHERE id = ? AND sub = ? AND status IN ('planned', 'priced')",
+    "UPDATE shopping_tasks SET status = 'researching', error = NULL, updated_at = datetime('now') WHERE id = ? AND sub = ? AND status IN ('planned', 'priced', 'built')",
   );
   // Tasks interrupted by a server restart can never finish. A plan that was
   // mid-planning fails; one that was mid-pricing keeps its plan.
@@ -85,6 +85,14 @@ export function openDb(path) {
   db.prepare(
     "UPDATE shopping_tasks SET status = 'planned', error = 'Price search was interrupted. Please try again.' WHERE status = 'researching'",
   ).run();
+  // Some items may already be in the T&T cart, so say so rather than failing silently.
+  db.prepare(
+    "UPDATE shopping_tasks SET status = 'priced', error = 'The cart build was interrupted. Check your T&T cart before trying again.' WHERE status = 'building'",
+  ).run();
+  // Atomic "priced/built → building" so a double click can't start two agents.
+  const claimBuild = db.prepare(
+    "UPDATE shopping_tasks SET status = 'building', error = NULL, updated_at = datetime('now') WHERE id = ? AND sub = ? AND status IN ('priced', 'built')",
+  );
 
   return {
     createTask(sub, id, input) {
@@ -110,6 +118,10 @@ export function openDb(path) {
     /** Returns true if the task moved to "researching" (it was planned or priced). */
     claimResearch(sub, id) {
       return claimResearch.run(id, sub).changes === 1;
+    },
+    /** Returns true if the task moved to "building" (it was priced or built). */
+    claimBuild(sub, id) {
+      return claimBuild.run(id, sub).changes === 1;
     },
     setTaskState(sub, id, { status, result, error = null }) {
       setState.run(status, result === undefined ? null : JSON.stringify(result), error, id, sub);

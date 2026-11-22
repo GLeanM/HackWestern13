@@ -54,7 +54,7 @@ export default function ReviewCart({ task, setTask, api, stale }) {
   const [error, setError] = useState("");
   const [openOptions, setOpenOptions] = useState(null);
   const [search, setSearch] = useState(null); // { index, text, running, message }
-  const editable = task.status === "priced" && !stale && !search?.running;
+  const editable = (task.status === "priced" || task.status === "built") && !stale && !search?.running;
 
   async function edit(edits) {
     setError("");
@@ -211,7 +211,9 @@ export default function ReviewCart({ task, setTask, api, stale }) {
           <span style={{ width: `${pct}%` }} />
         </div>
         <p className="muted small">
-          Next: CartPilot's agent adds these {review.readyForAgent} items to your T&amp;T cart. You check out yourself.
+          {task.status === "built"
+            ? "Changing anything here sends the cart back for approval."
+            : `Next: approve below and CartPilot's agent adds these ${review.readyForAgent} items to your T&T cart. You check out yourself.`}
         </p>
       </div>
 

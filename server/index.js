@@ -3,6 +3,8 @@ import { openDb } from "./db.js";
 import { createGeminiPlanner } from "./planner/mealPlan.js";
 import { fetchPages } from "./research/tinyfish.js";
 import { researchList } from "./research/research.js";
+import { createAgentClient } from "./cart/agent.js";
+import { runCartBuild } from "./cart/buildCart.js";
 
 const domain = process.env.AUTH0_DOMAIN ?? process.env.VITE_AUTH0_DOMAIN;
 const audience = process.env.AUTH0_AUDIENCE ?? process.env.VITE_AUTH0_AUDIENCE;
@@ -36,8 +38,22 @@ const app = createApp({
     researchList(toBuy, profile, {
       fetchPages: (urls) => fetchPages(urls, { apiKey: process.env.TINYFISH_API_KEY }),
     }),
+  // The T&T-signed-in TinyFish Browser Context Profile. Without it the
+  // approve route answers 503 instead of crashing the server.
+  cartBuilder: process.env.TINYFISH_PROFILE_ID
+    ? (cartRun, save) =>
+        runCartBuild(cartRun, {
+          agent: createAgentClient({ apiKey: process.env.TINYFISH_API_KEY }),
+          profileId: process.env.TINYFISH_PROFILE_ID,
+          save,
+        })
+    : null,
   corsOrigins: (process.env.CORS_ORIGINS ?? "http://localhost:5173").split(","),
 });
+
+if (!process.env.TINYFISH_PROFILE_ID) {
+  console.warn("TINYFISH_PROFILE_ID is not set: 'Approve & build cart' is disabled.");
+}
 
 app.listen(port, () => {
   console.log(`CartPilot API on http://localhost:${port} (audience ${audience})`);
