@@ -70,5 +70,5 @@ if (!process.env.TINYFISH_PROFILE_ID) {
 }
 
 app.listen(port, () => {
-  console.log(`CartPilot API on http://localhost:${port} (audience ${audience})`);
+  console.log(`Autocart API on http://localhost:${port} (audience ${audience})`);
 });

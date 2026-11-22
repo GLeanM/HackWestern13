@@ -10,7 +10,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const SCOPES = {
   readProfile: "read:profile",
   writeProfile: "write:profile",
-  // Lets CartPilot's agent change the user's real T&T cart. Requested by the
+  // Lets Autocart's agent change the user's real T&T cart. Requested by the
   // browser only at the moment the user approves (step-up consent).
   buildCart: "build:cart",
 };
@@ -23,10 +23,11 @@ export const SCOPES = {
  * @param {object} opts.db           store from openDb()
  * @param {Function} opts.planner    async (profile, note) => plan (see planner/mealPlan.js)
  * @param {Function} opts.researcher async (toBuy, profile) => research (see research/research.js)
+ * @param {boolean} [opts.autoPrice=true] start the T&T price search as soon as a plan is ready
  * @param {Function|null} opts.cartBuilder async (cartRun, save) => cartRun (see cart/buildCart.js); null disables cart building
  * @param {string[]} [opts.corsOrigins]
  */
-export function createApp({ authOptions, db, planner, researcher, cartBuilder = null, corsOrigins = [], log = console }) {
+export function createApp({ authOptions, db, planner, researcher, cartBuilder = null, autoPrice = true, corsOrigins = [], log = console }) {
   const app = express();
   app.disable("x-powered-by");
   app.use(cors({ origin: corsOrigins, allowedHeaders: ["Authorization", "Content-Type"] }));
@@ -86,7 +87,7 @@ export function createApp({ authOptions, db, planner, researcher, cartBuilder = 
       return res.status(409).json({ error: "task_in_progress", message: "A plan is already being made. Wait for it to finish." });
     }
     const { updatedAt: _ignored, ...profile } = stored;
-    const task = startPlanningTask({ db, planner, sub, profile, note: value.note, log });
+    const task = startPlanningTask({ db, planner, sub, profile, note: value.note, log, researcher, autoPrice });
     res.status(202).location(`/api/shopping-tasks/${task.id}`).json({ task });
   });
 

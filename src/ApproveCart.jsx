@@ -30,7 +30,7 @@ export default function ApproveCart({ task, setTask, api, reload }) {
       if (err.body?.error === "stale_review") reload(task.id);
       setError(
         err.error === "access_denied" || err.status === 403
-          ? "CartPilot needs your permission to build the cart. Approve again and allow access."
+          ? "Autocart needs your permission to build the cart. Approve again and allow access."
           : err.message === "Popup closed" || err.error === "cancelled"
             ? "The permission window was closed. Approve again when you're ready."
             : err.body?.message ?? "Couldn't start building your cart.",
@@ -41,10 +41,10 @@ export default function ApproveCart({ task, setTask, api, reload }) {
   }
 
   return (
-    <section className="approve" aria-labelledby="approve-h">
+    <section className="approve card" aria-labelledby="approve-h">
       <h3 id="approve-h">{rebuild ? "Rebuild your T&T cart" : "Approve & build your T&T cart"}</h3>
       <p>
-        CartPilot's agent will add <strong>{review.readyForAgent} item{review.readyForAgent === 1 ? "" : "s"}</strong>{" "}
+        Autocart's agent will add <strong>{review.readyForAgent} item{review.readyForAgent === 1 ? "" : "s"}</strong>{" "}
         (about <strong>{money(review.total)}</strong>) to your T&amp;T cart, setting each to the quantity you chose.
         {rebuild && " Items already in your cart are set to these quantities, not added again."}
       </p>
@@ -53,10 +53,10 @@ export default function ApproveCart({ task, setTask, api, reload }) {
         <span>I approve. The agent will <strong>not</strong> check out or pay. I'll finish checkout on T&amp;T myself.</span>
       </label>
       <div className="actions">
-        <button type="button" disabled={!agreed || busy} onClick={approve}>
+        <button type="button" className="btn btn-primary btn-lg" disabled={!agreed || busy} onClick={approve}>
           {busy ? "Starting the agent…" : rebuild ? "Rebuild cart" : "Approve & build cart"}
         </button>
-        <span className="muted">You'll be asked to grant CartPilot the "build cart" permission.</span>
+        <span className="muted">You'll be asked to grant Autocart the "build cart" permission.</span>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
     </section>

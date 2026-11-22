@@ -28,7 +28,7 @@ export function validateTaskInput(body) {
  * Creates a task and plans it in the background. Returns the task row
  * immediately (status "planning"); the client polls GET /shopping-tasks/:id.
  */
-export function startPlanningTask({ db, planner, sub, profile, note, log = console }) {
+export function startPlanningTask({ db, planner, sub, profile, note, log = console, researcher = null, autoPrice = false }) {
   const id = randomUUID();
   const task = db.createTask(sub, id, { note, profile });
 
@@ -43,6 +43,11 @@ export function startPlanningTask({ db, planner, sub, profile, note, log = conso
         meals: plan.meals,
         ...list,
       });
+      // Plan and price in one go: start the T&T price search straight away.
+      if (autoPrice && researcher && list.toBuy.length) {
+        const planned = db.getTask(sub, id);
+        if (db.claimResearch(sub, id)) startResearchTask({ db, researcher, sub, task: planned, profile, log });
+      }
     } catch (err) {
       log.error(`[task ${id}] planning failed:`, err.message);
       db.failTask(sub, id, "The meal planner couldn't finish. Please try again in a moment.");
