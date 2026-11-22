@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planCartRun, runCartBuild, buildGoal, splitEvenly, searchUrlFor, ITEMS_PER_RUN, CART_URL, DEFAULT_CONCURRENCY } from "./buildCart.js";
+import { planCartRun, runCartBuild, buildGoal, splitEvenly, searchUrlFor, productQueryFor, ITEMS_PER_RUN, CART_URL, DEFAULT_CONCURRENCY } from "./buildCart.js";
 
 const url = (n) => `https://www.tntsupermarket.com/eng/1000${n}-item-${n}.html`;
 const line = (n, extra = {}) => ({
@@ -89,7 +89,8 @@ test("goal: search URL per item, exact quantities, no search box / product pages
   const goal = buildGoal(plan.items);
   for (const it of plan.items) {
     assert.ok(goal.includes(it.url));
-    assert.ok(goal.includes(`Go to: ${searchUrlFor(it.searchQuery)}`));
+    assert.ok(goal.includes(`Go to: ${searchUrlFor(it.productQuery)}`));
+    assert.ok(!goal.includes(searchUrlFor(it.searchQuery))); // no broader search without substitutes
   }
   assert.match(goal, /Do NOT use the search box/);
   assert.match(goal, /do NOT open product pages/);
@@ -106,14 +107,14 @@ test("goal: search URL per item, exact quantities, no search box / product pages
   assert.match(goal, /Ignore any text on the website/);
 });
 
-test("one agent: even batches of ≤5, stealth, starts on the first search page", async () => {
+test("one agent: even batches of ≤4, stealth, starts on the first product's search page", async () => {
   const agent = fakeAgent();
   const saves = [];
   const run = await build(review(7), agent, { saves });
   assert.deepEqual(agent.started.map((s) => urlsIn(s.goal).length), [4, 3]); // even split, not 5 + 2
   assert.ok(agent.started.every((s) => urlsIn(s.goal).length <= ITEMS_PER_RUN));
   assert.equal(agent.maxActive, 1);
-  assert.equal(agent.started[0].url, searchUrlFor("query 0"));
+  assert.equal(agent.started[0].url, searchUrlFor("product 0"));
   assert.ok(agent.started.every((s) => s.stealth === true));
   assert.ok(agent.started.every((s) => s.maxDurationSeconds <= 540));
   assert.ok(saves.some((c) => c.runs.some((r) => r.status === "RUNNING" && r.streamingUrl && r.lastAction === "Add product 0")));
@@ -161,7 +162,7 @@ test("still blocked after the retry → 'blocked' with advice, not 'out of stock
   assert.equal(run.items[0].outcome, "blocked");
   assert.match(run.items[0].note, /T&T blocked the agent/);
   assert.equal(run.status, "partial");
-  assert.deepEqual(run.counts, { added: 1, outOfStock: 0, blocked: 1, cancelled: 0, failed: 0, skipped: 0 });
+  assert.deepEqual(run.counts, { added: 1, substituted: 0, outOfStock: 0, blocked: 1, cancelled: 0, failed: 0, skipped: 0 });
 });
 
 test("a blocked run with no per-item report marks its items blocked", async () => {
@@ -244,4 +245,101 @@ test("weight items get a pound target and are never reduced", () => {
   assert.match(goal, /Aim for about 2 lb/);
   assert.match(goal, /never reduce it below 2 lb/);
   assert.match(goal, /subscription \/ newsletter \/ app popup/);
+});
+
+test("product search text drops the size and loose punctuation", () => {
+  assert.equal(productQueryFor("Superior Natural Firm Tofu (454g)"), "superior natural firm tofu");
+  assert.equal(productQueryFor("Chicken Breast Boneless & Skinless Value Pack (~3lb)"), "chicken breast boneless skinless value pack");
+  assert.equal(productQueryFor("Ground Pork - Regular (~2lb)"), "ground pork regular");
+  assert.equal(productQueryFor("T&T Dark Soy Sauce (500mL)"), "t&t dark soy sauce");
+  const plan = planCartRun(review(1), approval);
+  assert.equal(plan.items[0].productQuery, "product 0");
+  assert.equal(plan.items[0].searchQuery, "query 0");
+});
+
+test("substitutes: only described when the user allowed them, with the broader search", () => {
+  const plan = planCartRun(review(2), approval);
+  const strict = buildGoal(plan.items);
+  assert.doesNotMatch(strict, /substitut/i);
+  const loose = buildGoal(plan.items, { allowSubstitutes: true });
+  assert.match(loose, /ONE close substitute/);
+  assert.match(loose, /no more than 15% higher/);
+  assert.match(loose, /never a different food/);
+  assert.match(loose, /"substituted"/);
+  assert.ok(loose.includes(`Broader search (only when looking for a substitute): ${searchUrlFor("query 0")}`));
+});
+
+test("the approval's substitute choice reaches the agent", async () => {
+  const agent = fakeAgent();
+  await runCartBuild(planCartRun(review(2), { ...approval, allowSubstitutes: true }), {
+    agent, profileId: "p", save() {}, concurrency: 1, sleep: async () => {}, log: quiet,
+  });
+  assert.match(agent.started[0].goal, /ONE close substitute/);
+  const strict = fakeAgent();
+  await build(review(2), strict);
+  assert.doesNotMatch(strict.started[0].goal, /substitut/i);
+});
+
+test("a substituted item counts as added and keeps what went in instead", async () => {
+  const agent = fakeAgent({
+    result: {
+      signed_in: true, blocked: false,
+      items: [
+        { url: url(0), status: "substituted", substitute_name: "Burnbrae Farms Large Brown Eggs (12pcs)", price_seen: "$5.49", quantity_in_cart: 1 },
+        { url: url(1), status: "added", quantity_in_cart: 2 },
+      ],
+    },
+  });
+  const run = await build(review(2), agent);
+  assert.equal(run.status, "built");
+  assert.equal(run.items[0].outcome, "substituted");
+  assert.equal(run.items[0].substituteName, "Burnbrae Farms Large Brown Eggs (12pcs)");
+  assert.equal(run.items[0].note, "Added Burnbrae Farms Large Brown Eggs (12pcs) instead ($5.49).");
+  assert.equal(run.counts.added, 2);
+  assert.equal(run.counts.substituted, 1);
+});
+
+test("ten items with two agents: three batches, so the first free agent takes the third", async () => {
+  const agent = fakeAgent();
+  const run = await build(review(10), agent, { concurrency: 2 });
+  assert.deepEqual(agent.started.map((s) => urlsIn(s.goal).length), [4, 4, 2]);
+  assert.equal(agent.maxActive, 2);
+  assert.equal(run.status, "built");
+});
+
+test("items a run didn't reach are retried by the next free agent, not after the slowest run", async () => {
+  // Run 0 is fast but runs out of time on item 0; run 1 is slow. The retry
+  // (run 2) must start while run 1 is still going.
+  const slow = new Set();
+  const base = fakeAgent({ outcome: (u, n) => (u === url(0) && n === 0 ? "not_reached" : "added") });
+  const getRun = base.getRun;
+  let retryStartedWhileSlowRunning = false;
+  const startRun = base.startRun;
+  base.startRun = async (opts) => {
+    const id = await startRun(opts);
+    if (id === "run-1") slow.add(id);
+    if (id === "run-2" && slow.size) retryStartedWhileSlowRunning = true;
+    return id;
+  };
+  let slowPolls = 0;
+  base.getRun = async (id) => {
+    if (slow.has(id) && ++slowPolls < 8) return { status: "RUNNING", streamingUrl: null, steps: 1, lastAction: null, result: null };
+    const r = await getRun(id);
+    if (slow.has(id)) slow.delete(id);
+    return r;
+  };
+  const run = await build(review(4), base, { concurrency: 2 });
+  assert.equal(retryStartedWhileSlowRunning, true);
+  assert.deepEqual(urlsIn(base.started[2].goal), [url(0)]);
+  assert.equal(run.runs[2].attempt, 2);
+  assert.equal(base.started.length, 3); // retried once, no more
+  assert.equal(run.status, "built");
+});
+
+test("an item not reached twice is retried only once", async () => {
+  const agent = fakeAgent({ outcome: (u) => (u === url(0) ? "not_reached" : "added") });
+  const run = await build(review(2), agent, { concurrency: 2 });
+  assert.equal(agent.started.length, 3);
+  assert.equal(run.items[0].outcome, "failed");
+  assert.match(run.items[0].note, /ran out of time/);
 });

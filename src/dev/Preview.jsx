@@ -56,8 +56,9 @@ async function buildTasks() {
   building.items.forEach((it, i) => { if (i < 3) (it.outcome = "added"), (it.quantityInCart = it.packages); });
   const built = structuredClone(building);
   built.items.forEach((it, i) => { it.outcome = i === 4 ? "unavailable" : "added"; it.note = i === 4 ? "Not on the page at your store." : null; });
+  Object.assign(built.items[0], { outcome: "substituted", substituteName: "Burnbrae Farms Large Brown Eggs (12pcs)", note: "Added Burnbrae Farms Large Brown Eggs (12pcs) instead ($5.49)." });
   built.runs.forEach((r) => (r.status = "COMPLETED"), (built.runs[0].runId = "preview-run"));
-  Object.assign(built, { status: "partial", finishedAt: new Date().toISOString(), steps: 20, counts: { added: built.items.length - 1, outOfStock: 1, blocked: 0, cancelled: 0, failed: 0, skipped: built.skipped.length } });
+  Object.assign(built, { status: "partial", finishedAt: new Date().toISOString(), steps: 20, counts: { added: built.items.length - 1, substituted: 1, outOfStock: 1, blocked: 0, cancelled: 0, failed: 0, skipped: built.skipped.length } });
   const priced = { ...base, status: "priced", result: { ...planResult, research, selections }, review };
   return {
     planning: { ...base, status: "planning", result: null },

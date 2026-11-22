@@ -10,6 +10,7 @@ const money = (x) => `$${x.toFixed(2)}`;
 export default function ApproveCart({ task, setTask, api, reload }) {
   const review = task.review;
   const [agreed, setAgreed] = useState(false);
+  const [allowSubstitutes, setAllowSubstitutes] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const rebuild = task.status === "built";
@@ -22,7 +23,7 @@ export default function ApproveCart({ task, setTask, api, reload }) {
       const { task: t } = await api(`/shopping-tasks/${task.id}/build-cart`, {
         method: "POST",
         scope: "build:cart",
-        body: { expectedTotal: review.total, expectedItems: review.itemCount },
+        body: { expectedTotal: review.total, expectedItems: review.itemCount, allowSubstitutes },
       });
       setTask(t);
       reload(t.id);
@@ -48,6 +49,13 @@ export default function ApproveCart({ task, setTask, api, reload }) {
         (about <strong>{money(review.total)}</strong>) to your T&amp;T cart, setting each to the quantity you chose.
         {rebuild && " Items already in your cart are set to these quantities, not added again."}
       </p>
+      <label className="agree subs">
+        <input type="checkbox" checked={allowSubstitutes} onChange={(e) => setAllowSubstitutes(e.target.checked)} />
+        <span>
+          If an item isn't at my T&amp;T store, add a close match instead (same kind and size, at most about 15% more).
+          <span className="muted small"> Swaps are listed after the build.</span>
+        </span>
+      </label>
       <label className="agree">
         <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
         <span>I approve. The agent will <strong>not</strong> check out or pay. I'll finish checkout on T&amp;T myself.</span>

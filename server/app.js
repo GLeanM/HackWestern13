@@ -191,9 +191,12 @@ export function createApp({ authOptions, db, planner, researcher, cartBuilder = 
       return res.status(503).json({ error: "cart_building_disabled", message: "Cart building isn't set up on this server." });
     }
     const body = req.body ?? {};
-    const keysOk = Object.keys(body).every((k) => k === "expectedTotal" || k === "expectedItems");
-    if (!keysOk || typeof body.expectedTotal !== "number" || !Number.isInteger(body.expectedItems)) {
-      return res.status(400).json({ error: "invalid_approval", message: "Send { expectedTotal, expectedItems } from the review you approved." });
+    const keysOk = Object.keys(body).every((k) => ["expectedTotal", "expectedItems", "allowSubstitutes"].includes(k));
+    if (
+      !keysOk || typeof body.expectedTotal !== "number" || !Number.isInteger(body.expectedItems) ||
+      (body.allowSubstitutes !== undefined && typeof body.allowSubstitutes !== "boolean")
+    ) {
+      return res.status(400).json({ error: "invalid_approval", message: "Send { expectedTotal, expectedItems, allowSubstitutes? } from the review you approved." });
     }
     const loaded = loadPriced(req, res);
     if (!loaded) return;
@@ -214,6 +217,7 @@ export function createApp({ authOptions, db, planner, researcher, cartBuilder = 
       scope: SCOPES.buildCart,
       total: review.total,
       itemCount: review.itemCount,
+      allowSubstitutes: body.allowSubstitutes === true,
     };
     startCartBuild({ db, cartBuilder, sub, task, review, approval, log });
     res.status(202).json({ task: withReview(db.getTask(sub, task.id)) });

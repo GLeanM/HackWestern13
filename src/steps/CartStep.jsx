@@ -27,7 +27,7 @@ export default function CartStep({ task, setTask, api, refreshPrices, error, goT
             <Button variant="ghost" icon="refresh" onClick={refreshPrices} disabled={building}>Refresh prices</Button>
           )}
           {task.status === "planned" && !research && (
-            <Button icon="spark" onClick={refreshPrices}>Find prices on T&amp;T</Button>
+            <Button onClick={refreshPrices}>Find prices on T&amp;T</Button>
           )}
         </div>
       </div>
