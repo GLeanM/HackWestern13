@@ -116,3 +116,31 @@ button:disabled { opacity: 0.6; cursor: default; }
 .small { font-size: 0.8rem; margin-top: 12px; }
 .warn-not-found, .warn-fetch { color: var(--error); }
 .warn-uncertain { color: var(--muted); }
+
+/* Review screen */
+.price-item.removed .item-name { text-decoration: line-through; color: var(--muted); }
+.chip-muted { color: var(--muted); }
+.row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 8px; }
+.stepper { display: inline-flex; align-items: center; gap: 8px; }
+.stepper button { padding: 2px 10px; min-width: 32px; }
+.link-btn { background: none; border: none; padding: 4px 0; color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.link-btn:disabled { color: var(--muted); text-decoration: none; }
+.options { border: 1px solid var(--border); border-radius: 8px; margin: 8px 0 0; padding: 4px 8px; }
+.option { display: flex; align-items: center; gap: 10px; padding: 6px 0; cursor: pointer; }
+.option + .option { border-top: 1px solid var(--border); }
+.option .product { flex: 1; }
+.option.selected .product-name { font-weight: 600; }
+.nowrap { white-space: nowrap; }
+.search-again { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.search-again input { flex: 1 1 180px; min-width: 0; }
+.total-bar {
+  position: sticky; bottom: 0; background: var(--card); border-top: 1px solid var(--border);
+  padding: 10px 0 4px; margin-top: 8px; z-index: 1;
+}
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+@media (max-width: 480px) {
+  .price-body, .alt { flex-direction: column; align-items: flex-start; }
+  .line-cost { align-items: flex-start; }
+  .option { align-items: flex-start; }
+  .option .nowrap { white-space: normal; }
+}
