@@ -4,12 +4,14 @@ const OUTCOME = {
   pending: { label: "Working…", cls: "chip-muted" },
   added: { label: "Added", cls: "chip-ok" },
   updated: { label: "Quantity set", cls: "chip-ok" },
+  substituted: { label: "Substituted", cls: "chip-warn" },
   out_of_stock: { label: "Out of stock", cls: "chip-bad" },
   unavailable: { label: "Not at your store", cls: "chip-bad" },
   failed: { label: "Failed", cls: "chip-bad" },
   blocked: { label: "Blocked by T&T", cls: "chip-warn" },
   cancelled: { label: "Stopped", cls: "chip-muted" },
 };
+const ADDED = new Set(["added", "updated", "substituted"]);
 const STATUS_TEXT = {
   building: "The agent is adding your items to T&T…",
   built: "Your T&T cart is ready.",
@@ -77,7 +79,7 @@ export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) 
                 Agent {r.batch + 1}{r.attempt > 1 ? " (retry)" : ""} · {r.status.toLowerCase()}
                 {r.startedAt ? ` · ${elapsed(r.startedAt)}` : ""}{r.steps ? ` · ${r.steps} steps` : ""}
               </span>
-              {r.lastAction && <span className="agent-action">Agent: {r.lastAction}</span>}
+              {r.lastAction && <span className="agent-action"><span aria-hidden="true">&gt; </span>{r.lastAction}</span>}
             </div>
           ))}
         </div>
@@ -90,14 +92,16 @@ export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) 
               <span>
                 <span className="item-name">{it.name}</span>
                 <span className="muted"> · {it.packages} × {it.productName}</span>
+                {it.outcome === "substituted" && it.substituteName && <span> → {it.substituteName}</span>}
               </span>
               <span className={`chip ${OUTCOME[it.outcome]?.cls ?? "chip-muted"}`}>
                 {it.outcome === "pending" && building && <span className="spinner" aria-hidden="true" />}
                 {OUTCOME[it.outcome]?.label ?? it.outcome}
               </span>
             </div>
-            {it.note && it.outcome !== "added" && it.outcome !== "updated" && <p className="muted small">{it.note}</p>}
-            {it.note && /expected/.test(it.note) && (it.outcome === "added" || it.outcome === "updated") && (
+            {it.note && !ADDED.has(it.outcome) && <p className="muted small">{it.note}</p>}
+            {it.outcome === "substituted" && it.note && !/expected/.test(it.note) && <p className="muted small">{it.note}</p>}
+            {it.note && /expected/.test(it.note) && ADDED.has(it.outcome) && (
               <p className="error small">{it.note}</p>
             )}
           </li>
@@ -113,6 +117,7 @@ export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) 
           {cartRun.counts && (
             <p>
               {cartRun.counts.added} added
+              {cartRun.counts.substituted ? ` (${cartRun.counts.substituted} substituted)` : ""}
               {cartRun.counts.outOfStock ? ` · ${cartRun.counts.outOfStock} out of stock` : ""}
               {cartRun.counts.blocked ? ` · ${cartRun.counts.blocked} blocked by T&T` : ""}
               {cartRun.counts.cancelled ? ` · ${cartRun.counts.cancelled} not done (stopped)` : ""}

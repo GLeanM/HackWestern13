@@ -26,7 +26,8 @@ export function observationsFrom(cartRun) {
     if (!it.url) continue;
     if (it.outcome === "added" || it.outcome === "updated") out.push({ url: it.url, seen: "available" });
     else if (it.outcome === "out_of_stock") out.push({ url: it.url, seen: "out_of_stock" });
-    else if (it.outcome === "unavailable") out.push({ url: it.url, seen: "not_found" });
+    // A substitute means the approved product wasn't there.
+    else if (it.outcome === "unavailable" || it.outcome === "substituted") out.push({ url: it.url, seen: "not_found" });
   }
   return out;
 }

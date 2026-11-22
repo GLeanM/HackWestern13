@@ -54,6 +54,8 @@ test("observations and the store: out of stock counts at once, 'not found' only 
   const db = openDb(":memory:");
   const run = (outcome) => ({ items: [{ url: url("Large Eggs 12"), outcome }, { url: url("Firm Tofu"), outcome: "out_of_stock" }] });
   assert.deepEqual(observationsFrom(run("unavailable")).map((o) => o.seen), ["not_found", "out_of_stock"]);
+  // A substitute went in, so the approved product wasn't there.
+  assert.deepEqual(observationsFrom(run("substituted")).map((o) => o.seen), ["not_found", "out_of_stock"]);
 
   db.recordStoreStock("N6G", observationsFrom(run("unavailable")));
   let known = db.storeStock("N6G");

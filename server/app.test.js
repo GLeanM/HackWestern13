@@ -527,6 +527,7 @@ test("approve → building → built, approval recorded, skipped lines listed", 
     assert.equal(run.approval.sub, "auth0|cart-ok");
     assert.equal(run.approval.scope, "build:cart");
     assert.equal(run.approval.total, task.review.total);
+    assert.equal(run.approval.allowSubstitutes, false); // off unless the user ticks it
     assert.equal(run.items.length, task.review.itemCount);
     assert.deepEqual(run.skipped, [{ index: 1, name, reason: "removed" }]);
     // The agent got the reviewed product URLs and pack counts.
@@ -550,6 +551,7 @@ test("build-cart rejects a stale review, other users, and bad bodies", async () 
   assert.equal(count.json.error, "stale_review");
   assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: { expectedTotal: "1" } })).status, 400);
   assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: { ...approveBody(task), sub: "x" } })).status, 400);
+  assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: { ...approveBody(task), allowSubstitutes: "yes" } })).status, 400);
   const other = await token("auth0|cart-intruder", { scope: CART_SCOPES });
   assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok: other, body: approveBody(task) })).status, 404);
 });
@@ -695,4 +697,14 @@ test("auto-price: a new plan goes straight on to T&T pricing", async () => {
     jwks.close();
     autoDb.close();
   }
+});
+
+test("build-cart records the user's choice to allow close substitutes", async () => {
+  const { id } = await pricedTask("auth0|cart-subs");
+  const tok = await token("auth0|cart-subs", { scope: CART_SCOPES });
+  const task = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task;
+  const res = await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: { ...approveBody(task), allowSubstitutes: true } });
+  assert.equal(res.status, 202);
+  const done = await built(tok, id);
+  assert.equal(done.result.cartRun.approval.allowSubstitutes, true);
 });
