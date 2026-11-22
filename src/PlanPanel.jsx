@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useApi } from "./api.js";
 import ReviewCart from "./ReviewCart.jsx";
+import ApproveCart from "./ApproveCart.jsx";
+import CartBuild from "./CartBuild.jsx";
 
 const POLL_MS = 2000;
 const SLOT_ORDER = { breakfast: 0, lunch: 1, dinner: 2 };
@@ -27,7 +29,7 @@ export default function PlanPanel({ profileSaved }) {
     try {
       const { task } = await api(`/shopping-tasks/${id}`);
       setTask(task);
-      if (task.status === "planning" || task.status === "researching") {
+      if (task.status === "planning" || task.status === "researching" || task.status === "building") {
         timer.current = setTimeout(() => load(id), POLL_MS);
       }
     } catch (e) {
@@ -60,8 +62,14 @@ export default function PlanPanel({ profileSaved }) {
   }
 
   const planning = task?.status === "planning";
-  const busy = planning || task?.status === "researching";
-  const hasPlan = task && ["planned", "researching", "priced"].includes(task.status);
+  const building = task?.status === "building";
+  const busy = planning || task?.status === "researching" || building;
+  const hasPlan = task && ["planned", "researching", "priced", "building", "built"].includes(task.status);
+  const priced = task?.status === "priced" || task?.status === "built";
+  const reload = (id) => {
+    clearTimeout(timer.current);
+    load(id);
+  };
 
   return (
     <section className="card">
@@ -89,21 +97,23 @@ export default function PlanPanel({ profileSaved }) {
           <div className="price-cta">
             {task.status === "researching" ? (
               <p className="muted"><span className="spinner" aria-hidden="true" /> TinyFish is searching T&amp;T for each item… usually 30–60 seconds.</p>
-            ) : (
+            ) : building ? null : (
               <div className="actions">
-                <button type="button" className={task.status === "priced" ? "secondary" : ""} onClick={price}>
-                  {task.status === "priced" ? "Refresh T&T prices" : "Find prices on T&T"}
+                <button type="button" className={priced ? "secondary" : ""} onClick={price}>
+                  {priced ? "Refresh T&T prices" : "Find prices on T&T"}
                 </button>
-                {task.status === "priced" && (
+                {priced && (
                   <span className="muted">Re-checking prices keeps your removals and picks where possible.</span>
                 )}
                 {task.error && <span className="error">{task.error}</span>}
               </div>
             )}
           </div>
+          {(building || task.status === "built") && <CartBuild cartRun={task.result.cartRun} building={building} />}
           {task.result.research && (
-            <ReviewCart task={task} setTask={setTask} api={api} stale={task.status === "researching"} />
+            <ReviewCart task={task} setTask={setTask} api={api} stale={task.status === "researching" || building} />
           )}
+          {priced && <ApproveCart key={task.status} task={task} setTask={setTask} api={api} reload={reload} />}
         </PlanResult>
       )}
     </section>

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { consolidate } from "./planner/consolidate.js";
 import { carryOver, defaultSelections, summarize } from "./review/cart.js";
+import { planCartRun } from "./cart/buildCart.js";
 
 const MAX_NOTE = 500;
 
@@ -50,7 +51,7 @@ export function startPlanningTask({ db, planner, sub, profile, note, log = conso
  */
 export function startResearchTask({ db, researcher, sub, task, profile, log = console }) {
   const plan = task.result;
-  const previousStatus = task.status; // "planned" or "priced"
+  const previousStatus = task.status; // "planned", "priced" or "built"
   db.setTaskState(sub, task.id, { status: "researching", result: plan });
 
   (async () => {
@@ -80,11 +81,38 @@ export function selectionsOf(result) {
 
 /** Adds the server-computed review (lines, total, warnings) to a priced task. */
 export function withReview(task) {
-  if (!task || task.status !== "priced" || !task.result?.research) return task;
+  if (!task || !["priced", "building", "built"].includes(task.status) || !task.result?.research) return task;
   const selections = selectionsOf(task.result);
   return {
     ...task,
     result: { ...task.result, selections },
     review: summarize(task.result.research, selections, task.result.research.budget),
   };
+}
+
+/**
+ * Runs the TinyFish agent that adds the approved review to the user's T&T
+ * cart. Caller must have claimed the task (db.claimBuild). Progress (live
+ * browser URLs, per-item outcomes) is saved as it happens.
+ */
+export function startCartBuild({ db, cartBuilder, sub, task, review, approval, log = console }) {
+  const previousStatus = task.status; // "priced" or "built"
+  const cartRun = planCartRun(review, approval);
+  const save = (cr) => db.setTaskState(sub, task.id, { status: "building", result: { ...task.result, cartRun: cr } });
+  save(cartRun);
+
+  (async () => {
+    try {
+      const done = await cartBuilder(cartRun, save);
+      db.setTaskState(sub, task.id, { status: "built", result: { ...task.result, cartRun: done } });
+    } catch (err) {
+      log.error(`[task ${task.id}] cart build failed:`, err.message);
+      db.setTaskState(sub, task.id, {
+        status: previousStatus,
+        result: task.result, // keeps the review and any earlier build
+        error: err.userMessage ?? "The agent couldn't build your cart. Please try again in a moment.",
+      });
+    }
+  })();
+  return cartRun;
 }

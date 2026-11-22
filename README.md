@@ -18,14 +18,14 @@ Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&
 3. **Plan.** Google Gemini (structured JSON output) produces a structured meal plan and ingredient list. Server code (not the LLM) merges duplicates, removes pantry items and exclusions.
 4. **Research.** TinyFish Fetch reads T&T's search page for every item at once (about 30–40s for a full list). Server code parses the results, screens out allergens and "different foods" (quail eggs aren't eggs), picks the cheapest pack that covers the recipe quantity, retries simpler searches when nothing matches, and totals the cart against the budget.
 5. **Review.** You swap to another product, change pack counts, remove or restore items, or search T&T again with your own words. The total updates instantly and is re-computed by the server (it never trusts prices from the browser). Warnings name the biggest lines when you're over budget.
-6. **Build cart.** After you approve, a TinyFish agent signed in to your T&T account adds exactly those products to the cart. It is explicitly told never to check out or pay.
+6. **Approve & build cart.** Approving asks Auth0 for the `build:cart` permission at that moment (consent popup the first time). The server checks the permission and that the total and item count match what you approved, records the approval, then starts TinyFish browser agents signed in to T&T (up to 2 at once, 4 items each). They open each product page and set its cart quantity to exactly what you chose. You can watch them live. Each item reports added / out of stock / failed, and the agent reports the T&T cart subtotal. The agent is told never to check out or pay; you finish on T&T.
 
 ### Sponsor integrations
 
 | Sponsor | How CartPilot uses it |
 | --- | --- |
-| **Auth0** | Login; access tokens checked on every API call (signature, issuer, audience, expiry); permission scopes per action (`read:profile`, `write:profile`, `build:cart`); all data keyed to the token's user id, never an id sent by the browser. Retailer credentials never reach the frontend or the LLM. |
-| **TinyFish** | Reads live T&T search results for product research, and runs a browser agent with a saved, signed-in T&T session to build the real cart. |
+| **Auth0** | Login; access tokens checked on every API call (signature, issuer, audience, expiry); permission scopes per action (`read:profile`, `write:profile`, `build:cart`). `build:cart` is requested only when you approve (step-up consent) and the approval is recorded with your user id, total and time. All data keyed to the token's user id, never an id sent by the browser. Retailer credentials never reach the frontend or the LLM. |
+| **TinyFish** | Fetch reads live T&T search results for product research. Web Agent runs with a saved, signed-in T&T Browser Context Profile build the real cart, with live browser views embedded in the app. |
 
 ## Status
 
@@ -36,8 +36,8 @@ Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&
 | 3. Meal planner (Gemini → consolidated shopping list) | ✅ Done |
 | 4. Product research and pricing on T&T (TinyFish Fetch) | ✅ Done |
 | 5. Review screen: swap, pack counts, remove/restore, search again | ✅ Done |
-| 6. Approve & build the T&T cart (TinyFish agent, `build:cart`) | ⏳ Next |
-| 7. Polish and demo backup | ⏳ |
+| 6. Approve & build the T&T cart (TinyFish agent, `build:cart` step-up) | ✅ Done |
+| 7. Polish and demo backup | ⏳ Next |
 
 ## Tech stack
 
@@ -56,6 +56,8 @@ src/
   ProfileForm.jsx   Load and save the grocery profile
   PlanPanel.jsx     Start a plan, poll it, show meals and the shopping list
   ReviewCart.jsx    Review screen: products, pack stepper, swap options, remove/restore, search again, live total vs budget
+  ApproveCart.jsx   Approve & build: confirmation, build:cart step-up, sends the approved total
+  CartBuild.jsx     Live TinyFish browser views, per-item outcomes, link to the T&T cart
   api.js            fetch wrapper that attaches the Auth0 access token
 server/
   index.js          Reads env, opens the DB, starts the API
@@ -73,6 +75,9 @@ server/
     match.js        Picks the right product: relevance, allergy/diet screening, cheapest pack that covers the need
     research.js     Prices the whole list, retries simpler searches, totals vs budget
     fixtures/       Real T&T search results used by the tests
+  cart/
+    agent.js        TinyFish Web Agent client: start an async run, poll status / live view / result
+    buildCart.js    Splits the approved cart into agent runs, writes the goal (exact quantities, never check out), tracks outcomes
   review/
     cart.js         Review-cart rules shared with the browser: selections, edit validation, totals, warnings, carry-over
   app.test.js       API tests (auth, scopes, isolation, validation, tasks, pricing, review)
@@ -93,6 +98,7 @@ All `/api/*` routes except health need `Authorization: Bearer <Auth0 access toke
 | POST | `/api/shopping-tasks/:id/research` | `read:profile` | Look up every list item on T&T and price it (read-only; nothing is added to a cart). Returns `202` with status `researching`, then `priced`. Re-pricing keeps review choices where possible |
 | PATCH | `/api/shopping-tasks/:id/cart` | `read:profile` | Review edits `{ edits: [{ index, name, option?, packages?, removed? }] }`. Prices are recomputed on the server from stored research; any price sent by the client is rejected |
 | POST | `/api/shopping-tasks/:id/items/:index/search` | `read:profile` | Search T&T again for one item with your own words `{ query }` (waits ~25–40s). Not found keeps the previous pick |
+| POST | `/api/shopping-tasks/:id/build-cart` | **`build:cart`** | Approve the reviewed cart `{ expectedTotal, expectedItems }` (must match the server's review, else `409 stale_review`). Returns `202` with status `building`; poll the task for live agent views and per-item outcomes, then `built` |
 
 Errors: `401` bad or missing token, `403` missing scope, `400` invalid input (with per-field messages), `409` no saved profile yet, wrong task state, or something already running, `502` T&T couldn't be reached.
 
@@ -103,7 +109,8 @@ Requires Node 24+.
 1. **Auth0 setup** (once):
    - A **Single Page Application** with callback, logout and web-origin URLs set to `http://localhost:5173`.
    - An **API** with identifier `https://cartpilot-api` (RS256) and permissions `read:profile`, `write:profile`, `build:cart`.
-   - On the API's **Application Access** tab, under **User Access**, set the SPA to **Authorized**.
+   - On the API's **Application Access** tab, under **User Access**, set the SPA to **Authorized** (including `build:cart`).
+1. **TinyFish setup** (once): create a Browser Context Profile, sign in to tntsupermarket.com in its setup browser and pick your postal code, then put its id in `TINYFISH_PROFILE_ID`. For the demo this is one team T&T account; per-user T&T connections are future work.
 2. Copy `.env.example` to `.env.local` and fill in your values.
 3. Install and run:
 
