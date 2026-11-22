@@ -95,15 +95,29 @@ export function withReview(task) {
  * cart. Caller must have claimed the task (db.claimBuild). Progress (live
  * browser URLs, per-item outcomes) is saved as it happens.
  */
+// Builds in progress, so the user can stop them: "sub:taskId" → AbortController.
+const activeBuilds = new Map();
+
+/** Ask a running build to stop. Returns false if there's nothing to stop. */
+export function cancelCartBuild(sub, taskId) {
+  const ctl = activeBuilds.get(`${sub}:${taskId}`);
+  if (!ctl) return false;
+  ctl.abort();
+  return true;
+}
+
 export function startCartBuild({ db, cartBuilder, sub, task, review, approval, log = console }) {
   const previousStatus = task.status; // "priced" or "built"
   const cartRun = planCartRun(review, approval);
+  const key = `${sub}:${task.id}`;
+  const controller = new AbortController();
+  activeBuilds.set(key, controller);
   const save = (cr) => db.setTaskState(sub, task.id, { status: "building", result: { ...task.result, cartRun: cr } });
   save(cartRun);
 
   (async () => {
     try {
-      const done = await cartBuilder(cartRun, save);
+      const done = await cartBuilder(cartRun, save, controller.signal);
       db.setTaskState(sub, task.id, { status: "built", result: { ...task.result, cartRun: done } });
     } catch (err) {
       log.error(`[task ${task.id}] cart build failed:`, err.message);
@@ -112,6 +126,8 @@ export function startCartBuild({ db, cartBuilder, sub, task, review, approval, l
         result: task.result, // keeps the review and any earlier build
         error: err.userMessage ?? "The agent couldn't build your cart. Please try again in a moment.",
       });
+    } finally {
+      activeBuilds.delete(key);
     }
   })();
   return cartRun;

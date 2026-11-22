@@ -41,15 +41,27 @@ const app = createApp({
   // The T&T-signed-in TinyFish Browser Context Profile. Without it the
   // approve route answers 503 instead of crashing the server.
   cartBuilder: process.env.TINYFISH_PROFILE_ID
-    ? (cartRun, save) =>
+    ? (cartRun, save, signal) =>
         runCartBuild(cartRun, {
           agent: createAgentClient({ apiKey: process.env.TINYFISH_API_KEY }),
           profileId: process.env.TINYFISH_PROFILE_ID,
           save,
+          signal,
         })
     : null,
   corsOrigins: (process.env.CORS_ORIGINS ?? "http://localhost:5173").split(","),
 });
+
+// Stop TinyFish runs left over from a build that a restart interrupted.
+if (db.interruptedRunIds.length && process.env.TINYFISH_API_KEY) {
+  const agent = createAgentClient({ apiKey: process.env.TINYFISH_API_KEY });
+  for (const id of db.interruptedRunIds) {
+    agent.cancelRun(id).then(
+      (status) => console.log(`Cancelled leftover TinyFish run ${id} (${status})`),
+      (err) => console.error(`Couldn't cancel leftover TinyFish run ${id}:`, err.message),
+    );
+  }
+}
 
 if (!process.env.TINYFISH_PROFILE_ID) {
   console.warn("TINYFISH_PROFILE_ID is not set: 'Approve & build cart' is disabled.");

@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 const OUTCOME = {
   pending: { label: "Working…", cls: "chip-muted" },
   added: { label: "Added", cls: "chip-ok" },
@@ -5,23 +7,55 @@ const OUTCOME = {
   out_of_stock: { label: "Out of stock", cls: "chip-bad" },
   unavailable: { label: "Unavailable", cls: "chip-bad" },
   failed: { label: "Failed", cls: "chip-bad" },
+  blocked: { label: "Blocked by T&T", cls: "chip-warn" },
+  cancelled: { label: "Stopped", cls: "chip-muted" },
 };
 const STATUS_TEXT = {
   building: "The agent is adding your items to T&T…",
   built: "Your T&T cart is ready.",
   partial: "Most items are in your T&T cart. Check the ones below.",
   failed: "The agent couldn't add your items.",
+  cancelled: "You stopped the agent.",
 };
 const T_AND_T_HOME = "https://www.tntsupermarket.com/eng/";
 
-export default function CartBuild({ cartRun, building }) {
+export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) {
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState("");
   if (!cartRun) return null;
+
+  async function stop() {
+    setStopping(true);
+    setStopError("");
+    try {
+      const { task } = await api(`/shopping-tasks/${taskId}/build-cart/cancel`, { method: "POST" });
+      onUpdate(task);
+    } catch (err) {
+      setStopping(false);
+      setStopError(err.body?.message ?? "Couldn't stop the agent.");
+    }
+  }
   const live = cartRun.runs?.filter((r) => r.status !== "COMPLETED" && r.status !== "FAILED" && r.status !== "CANCELLED") ?? [];
   const status = building ? "building" : cartRun.status;
 
   return (
     <section className="cart-build" aria-live="polite">
-      <h3>{STATUS_TEXT[status] ?? "Cart build"}</h3>
+      <div className="build-head">
+        <h3>{STATUS_TEXT[status] ?? "Cart build"}</h3>
+        {building && api && (
+          <button type="button" className="secondary danger" onClick={stop} disabled={stopping}>
+            {stopping ? "Stopping…" : "Stop agent"}
+          </button>
+        )}
+      </div>
+      {building && (
+        <p className="muted small">
+          {cartRun.retrying
+            ? "T&T blocked part of the first attempt, so the agent is retrying those items in a fresh session."
+            : "One agent at a time, so T&T doesn't block it. If you stop, items already added stay in your T&T cart."}
+        </p>
+      )}
+      {stopError && <p className="error small" role="alert">{stopError}</p>}
 
       {building && (
         <div className="live-grid">
@@ -73,8 +107,15 @@ export default function CartBuild({ cartRun, building }) {
             <p>
               {cartRun.counts.added} added
               {cartRun.counts.outOfStock ? ` · ${cartRun.counts.outOfStock} out of stock` : ""}
+              {cartRun.counts.blocked ? ` · ${cartRun.counts.blocked} blocked by T&T` : ""}
+              {cartRun.counts.cancelled ? ` · ${cartRun.counts.cancelled} not done (stopped)` : ""}
               {cartRun.counts.failed ? ` · ${cartRun.counts.failed} failed` : ""}
               {cartRun.cartSubtotal && <> · cart subtotal (as read by the agent) <strong>{cartRun.cartSubtotal}</strong></>}
+            </p>
+          )}
+          {cartRun.counts?.blocked > 0 && (
+            <p className="muted small">
+              T&amp;T's website blocked the agent for some items. Wait a few minutes and use "Rebuild cart" below (only those items still need adding), or add them on T&amp;T yourself.
             </p>
           )}
           <div className="actions">

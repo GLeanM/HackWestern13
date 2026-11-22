@@ -15,7 +15,10 @@ test("a restart mid-task never leaves work stuck, and keeps the plan", () => {
     db.createTask("u", "a0000000-0000-4000-8000-000000000002", {});
     db.createTask("u", "a0000000-0000-4000-8000-000000000003", {});
     db.setTaskState("u", "a0000000-0000-4000-8000-000000000002", { status: "researching", result: plan });
-    db.setTaskState("u", "a0000000-0000-4000-8000-000000000003", { status: "building", result: plan });
+    db.setTaskState("u", "a0000000-0000-4000-8000-000000000003", {
+      status: "building",
+      result: { ...plan, cartRun: { runs: [{ runId: "tf-run-1" }, { runId: null }, { runId: "tf-run-2" }] } },
+    });
     db.close();
 
     db = openDb(path);
@@ -25,7 +28,9 @@ test("a restart mid-task never leaves work stuck, and keeps the plan", () => {
     assert.deepEqual(researching.result, plan);
     assert.equal(building.status, "priced");
     assert.match(building.error, /Check your T&T cart/);
-    assert.deepEqual(building.result, plan);
+    assert.deepEqual(building.result.toBuy, plan.toBuy);
+    // Their TinyFish runs are handed to index.js to cancel.
+    assert.deepEqual(db.interruptedRunIds, ["tf-run-1", "tf-run-2"]);
     assert.equal(db.activeTaskCount("u"), 0);
     db.close();
   } finally {
