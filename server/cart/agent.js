@@ -30,7 +30,7 @@ async function call(path, { apiKey, method = "GET", body, fetchImpl, timeoutMs =
 export function createAgentClient({ apiKey, fetchImpl = fetch }) {
   return {
     /** @returns {Promise<string>} run id */
-    async startRun({ url, goal, outputSchema, profileId, maxSteps, maxDurationSeconds }) {
+    async startRun({ url, goal, outputSchema, profileId, maxSteps, maxDurationSeconds, stealth = false }) {
       const json = await call("/automation/run-async", {
         apiKey,
         fetchImpl,
@@ -40,6 +40,8 @@ export function createAgentClient({ apiKey, fetchImpl = fetch }) {
           goal,
           output_schema: outputSchema,
           use_profile: true,
+          // Anti-detection browser: T&T's edge blocks the default one more often.
+          ...(stealth && { browser_profile: "stealth" }),
           profile_id: profileId,
           proxy_config: { enabled: true, country_code: "CA" },
           // Custom max_steps needs a TinyFish beta flag, so it's only sent when set.
@@ -51,6 +53,12 @@ export function createAgentClient({ apiKey, fetchImpl = fetch }) {
         throw new AgentError(json?.error?.message ?? "TinyFish didn't start the run", json?.error?.code ?? "NO_RUN_ID");
       }
       return json.run_id;
+    },
+
+    /** Stop a run. Idempotent: a finished run just reports its status. */
+    async cancelRun(id) {
+      const r = await call(`/runs/${encodeURIComponent(id)}/cancel`, { apiKey, fetchImpl, method: "POST" });
+      return r?.status ?? null;
     },
 
     /** @returns {Promise<{status, result, error, streamingUrl, steps}>} */

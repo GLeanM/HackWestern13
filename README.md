@@ -18,7 +18,7 @@ Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&
 3. **Plan.** Google Gemini (structured JSON output) produces a structured meal plan and ingredient list. Server code (not the LLM) merges duplicates, removes pantry items and exclusions.
 4. **Research.** TinyFish Fetch reads T&T's search page for every item at once (about 30–40s for a full list). Server code parses the results, screens out allergens and "different foods" (quail eggs aren't eggs), picks the cheapest pack that covers the recipe quantity, retries simpler searches when nothing matches, and totals the cart against the budget.
 5. **Review.** You swap to another product, change pack counts, remove or restore items, or search T&T again with your own words. The total updates instantly and is re-computed by the server (it never trusts prices from the browser). Warnings name the biggest lines when you're over budget.
-6. **Approve & build cart.** Approving asks Auth0 for the `build:cart` permission at that moment (consent popup the first time). The server checks the permission and that the total and item count match what you approved, records the approval, then starts TinyFish browser agents signed in to T&T (up to 2 at once, 4 items each). They open each product page and set its cart quantity to exactly what you chose. You can watch them live. Each item reports added / out of stock / failed, and the agent reports the T&T cart subtotal. The agent is told never to check out or pay; you finish on T&T.
+6. **Approve & build cart.** Approving asks Auth0 for the `build:cart` permission at that moment (consent popup the first time). The server checks the permission and that the total and item count match what you approved, records the approval, then starts a TinyFish browser agent signed in to T&T (stealth browser, one agent at a time, up to 5 items per run). Like a shopper, it starts on T&T's home page, searches for each item, and sets the matching product's cart quantity to exactly what you chose. You can watch it live and **stop it** at any time (items already added stay in your cart). If T&T's website blocks the agent ("Access Denied"), it stops right away instead of burning time, and those items are retried once in a fresh session. Each item reports added / quantity set / out of stock / blocked / stopped, and the agent is told never to check out or pay; you finish on T&T.
 
 ### Sponsor integrations
 
@@ -77,7 +77,7 @@ server/
     fixtures/       Real T&T search results used by the tests
   cart/
     agent.js        TinyFish Web Agent client: start an async run, poll status / live view / result
-    buildCart.js    Splits the approved cart into agent runs, writes the goal (exact quantities, never check out), tracks outcomes
+    buildCart.js    Runs the agent one batch at a time: goal (search like a shopper, exact quantities, stop on a block, never check out), retry of blocked items, cancel, outcomes
   review/
     cart.js         Review-cart rules shared with the browser: selections, edit validation, totals, warnings, carry-over
   app.test.js       API tests (auth, scopes, isolation, validation, tasks, pricing, review)
@@ -98,6 +98,7 @@ All `/api/*` routes except health need `Authorization: Bearer <Auth0 access toke
 | POST | `/api/shopping-tasks/:id/research` | `read:profile` | Look up every list item on T&T and price it (read-only; nothing is added to a cart). Returns `202` with status `researching`, then `priced`. Re-pricing keeps review choices where possible |
 | PATCH | `/api/shopping-tasks/:id/cart` | `read:profile` | Review edits `{ edits: [{ index, name, option?, packages?, removed? }] }`. Prices are recomputed on the server from stored research; any price sent by the client is rejected |
 | POST | `/api/shopping-tasks/:id/items/:index/search` | `read:profile` | Search T&T again for one item with your own words `{ query }` (waits ~25–40s). Not found keeps the previous pick |
+| POST | `/api/shopping-tasks/:id/build-cart/cancel` | `read:profile` | Stop the running agent (cancels its TinyFish run). Items already added stay in the T&T cart |
 | POST | `/api/shopping-tasks/:id/build-cart` | **`build:cart`** | Approve the reviewed cart `{ expectedTotal, expectedItems }` (must match the server's review, else `409 stale_review`). Returns `202` with status `building`; poll the task for live agent views and per-item outcomes, then `built` |
 
 Errors: `401` bad or missing token, `403` missing scope, `400` invalid input (with per-field messages), `409` no saved profile yet, wrong task state, or something already running, `502` T&T couldn't be reached.
@@ -119,6 +120,13 @@ Requires Node 24+.
    npm run dev     # web on http://localhost:5173, API on http://localhost:3001 (proxied at /api)
    npm test        # backend tests
    ```
+
+## Lessons from live testing
+
+- T&T's website answers "Access Denied" to automated **direct product-page links** and to **two agents on one account at once**, while its search pages keep working. The agent therefore uses TinyFish's stealth browser, starts at the home page, adds items from search results, and runs one at a time. On the same items this went from ~27 minutes / 222 steps with mostly failures to ~3 minutes / 19 steps with everything added.
+- A blocked agent used to keep trying for 100+ steps; it now stops at the first block and reports it as **blocked** (not "out of stock").
+- T&T's cart counts weight items in pounds (e.g. 1.5), so those aren't flagged as quantity mismatches.
+- If the server restarts mid-build, leftover TinyFish runs are cancelled on startup so they don't keep costing money.
 
 ## Safety principles
 

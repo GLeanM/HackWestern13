@@ -595,3 +595,38 @@ test("a build that can't start restores the previous state with a message", asyn
     fakeCartBuilder = addAll;
   }
 });
+
+test("cancel: stops a running build; 404 for others; 409 when nothing is running", async () => {
+  const { id } = await pricedTask("auth0|cart-cancel");
+  const tok = await token("auth0|cart-cancel", { scope: CART_SCOPES });
+  const task = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task;
+  assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart/cancel`, { tok })).status, 409);
+
+  let gotSignal;
+  fakeCartBuilder = (cartRun, save, signal) =>
+    new Promise((resolve) => {
+      gotSignal = signal;
+      signal.addEventListener("abort", () => {
+        for (const it of cartRun.items) (it.outcome = "cancelled"), (it.note = "Stopped before this item.");
+        cartRun.status = "cancelled";
+        save(cartRun);
+        resolve(cartRun);
+      });
+    });
+  try {
+    assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: approveBody(task) })).status, 202);
+    const other = await token("auth0|cart-cancel-other");
+    assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart/cancel`, { tok: other })).status, 404);
+    // Plain read:profile is enough to stop the agent (no consent popup needed).
+    const plain = await token("auth0|cart-cancel");
+    const res = await call("POST", `/api/shopping-tasks/${id}/build-cart/cancel`, { tok: plain });
+    assert.equal(res.status, 202);
+    assert.equal(gotSignal.aborted, true);
+    const done = await built(tok, id);
+    assert.equal(done.status, "built");
+    assert.equal(done.result.cartRun.status, "cancelled");
+    assert.equal((await call("POST", `/api/shopping-tasks/${id}/build-cart/cancel`, { tok })).status, 409);
+  } finally {
+    fakeCartBuilder = addAll;
+  }
+});

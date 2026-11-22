@@ -109,7 +109,7 @@ export default function PlanPanel({ profileSaved }) {
               </div>
             )}
           </div>
-          {(building || task.status === "built") && <CartBuild cartRun={task.result.cartRun} building={building} />}
+          {(building || task.status === "built") && <CartBuild cartRun={task.result.cartRun} building={building} taskId={task.id} api={api} onUpdate={setTask} />}
           {task.result.research && (
             <ReviewCart task={task} setTask={setTask} api={api} stale={task.status === "researching" || building} />
           )}

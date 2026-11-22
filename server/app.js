@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { auth, requiredScopes } from "express-oauth2-jwt-bearer";
 import { validateProfile, DEFAULT_PROFILE } from "./profile.js";
-import { validateTaskInput, startPlanningTask, startResearchTask, startCartBuild, selectionsOf, withReview } from "./tasks.js";
+import { validateTaskInput, startPlanningTask, startResearchTask, startCartBuild, cancelCartBuild, selectionsOf, withReview } from "./tasks.js";
 import { applyEdits, defaultSelection, summarize } from "./review/cart.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -215,6 +215,18 @@ export function createApp({ authOptions, db, planner, researcher, cartBuilder = 
       itemCount: review.itemCount,
     };
     startCartBuild({ db, cartBuilder, sub, task, review, approval, log });
+    res.status(202).json({ task: withReview(db.getTask(sub, task.id)) });
+  });
+
+  // Stop the agent. Only needs read:profile: stopping is always safe and must
+  // never wait on a consent popup. Items already added stay in the T&T cart.
+  api.post("/shopping-tasks/:id/build-cart/cancel", requiredScopes(SCOPES.readProfile), (req, res) => {
+    const sub = userSub(req);
+    const task = UUID_RE.test(req.params.id) ? db.getTask(sub, req.params.id) : null;
+    if (!task) return res.status(404).json({ error: "not_found" });
+    if (task.status !== "building" || !cancelCartBuild(sub, task.id)) {
+      return res.status(409).json({ error: "not_building", message: "The agent isn't running." });
+    }
     res.status(202).json({ task: withReview(db.getTask(sub, task.id)) });
   });
 

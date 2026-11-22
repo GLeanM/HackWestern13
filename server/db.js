@@ -85,6 +85,18 @@ export function openDb(path) {
   db.prepare(
     "UPDATE shopping_tasks SET status = 'planned', error = 'Price search was interrupted. Please try again.' WHERE status = 'researching'",
   ).run();
+  // TinyFish runs of builds cut off by a restart keep running (and costing
+  // money) unless cancelled; index.js cancels these on startup.
+  const interruptedRunIds = db
+    .prepare("SELECT result FROM shopping_tasks WHERE status = 'building'")
+    .all()
+    .flatMap((row) => {
+      try {
+        return (JSON.parse(row.result)?.cartRun?.runs ?? []).map((r) => r.runId).filter(Boolean);
+      } catch {
+        return [];
+      }
+    });
   // Some items may already be in the T&T cart, so say so rather than failing silently.
   db.prepare(
     "UPDATE shopping_tasks SET status = 'priced', error = 'The cart build was interrupted. Check your T&T cart before trying again.' WHERE status = 'building'",
@@ -95,6 +107,7 @@ export function openDb(path) {
   );
 
   return {
+    interruptedRunIds,
     createTask(sub, id, input) {
       insertUser.run(sub);
       insertTask.run(id, sub, "planning", JSON.stringify(input));
