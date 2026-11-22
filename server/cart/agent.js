@@ -46,7 +46,7 @@ export function createAgentClient({ apiKey, fetchImpl = fetch }) {
           proxy_config: { enabled: true, country_code: "CA" },
           // Custom max_steps needs a TinyFish beta flag, so it's only sent when set.
           agent_config: { ...(maxSteps && { max_steps: maxSteps }), max_duration_seconds: maxDurationSeconds },
-          api_integration: "cartpilot",
+          api_integration: "autocart",
         },
       });
       if (!json?.run_id) {

@@ -1,19 +1,32 @@
-# CartPilot
+# Autocart
 
-**Your personal AI grocery-shopping employee.** HackWestern 2026, built for the Auth0 and TinyFish sponsor tracks.
+**Your grocery cart, built for you.** (A play on Instacart.) HackWestern 2026, built for the Auth0 and TinyFish sponsor tracks.
 
-You give CartPilot a grocery budget, household size, food preferences, things to avoid, and what's already in your pantry. It turns that into a meal plan and shopping list, looks up real products and prices on **T&T Supermarket** (tntsupermarket.com), and uses a TinyFish browser agent to **add the approved items to your real T&T cart**. You review everything first, and you finish checkout yourself. CartPilot never places orders or pays.
+You give Autocart a grocery budget, household size, food preferences, things to avoid, and what's already in your pantry. It turns that into a meal plan and shopping list, looks up real products and prices on **T&T Supermarket** (tntsupermarket.com), and uses a TinyFish browser agent to **add the approved items to your real T&T cart**. You review everything first, and you finish checkout yourself. Autocart never places orders or pays.
 
 > Not affiliated with T&T Supermarket. Allergy filtering is a screening aid, not a guarantee: always check product labels yourself.
+
+## The app
+
+A web app with four steps in a sidebar (a pill bar on phones) and a live summary of the cart total against the budget:
+
+1. **Profile**: budget, household, food preferences, pantry, postal code.
+2. **Meal plan**: one click on **Plan & price my groceries** plans the meals and then prices the list at T&T automatically.
+3. **Cart**: the shopping list appears straight away with "finding price…" placeholders, then turns into the editable cart (swap, pack counts, remove, search again).
+4. **Build cart**: approve, then watch the TinyFish agents shop live (with a Stop button) and see what landed in the T&T cart.
+
+The theme is white and green to match T&T. A dev-only design preview with sample data for every state is at `http://localhost:5173/src/dev/preview.html?state=priced` (states: landing, profile, planning, researching, priced, building, built).
+
+> The Auth0 API identifier is still `https://cartpilot-api` from before the rename; changing it would mean re-creating the Auth0 API.
 
 ## How it works
 
 ```
 Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&T (TinyFish)
-      → Review & edit in CartPilot → Approve → Agent adds items to your T&T cart → You check out
+      → Review & edit in Autocart → Approve → Agent adds items to your T&T cart → You check out
 ```
 
-1. **Sign in.** Auth0 handles sign-up and login. The React app gets an access token for the CartPilot API.
+1. **Sign in.** Auth0 handles sign-up and login. The React app gets an access token for the Autocart API.
 2. **Profile.** Budget, people, days, diet, cuisines, allergies, foods to skip, nutrition and cooking preferences, postal code, and pantry. Saved per user.
 3. **Plan.** Google Gemini (structured JSON output) produces a structured meal plan and ingredient list. Server code (not the LLM) merges duplicates, removes pantry items and exclusions.
 4. **Research.** TinyFish Fetch reads T&T's search page for every item at once (about 30–40s for a full list). Server code parses the results, screens out allergens and "different foods" (quail eggs aren't eggs), picks the cheapest pack that covers the recipe quantity, retries simpler searches when nothing matches, and totals the cart against the budget.
@@ -22,7 +35,7 @@ Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&
 
 ### Sponsor integrations
 
-| Sponsor | How CartPilot uses it |
+| Sponsor | How Autocart uses it |
 | --- | --- |
 | **Auth0** | Login; access tokens checked on every API call (signature, issuer, audience, expiry); permission scopes per action (`read:profile`, `write:profile`, `build:cart`). `build:cart` is requested only when you approve (step-up consent) and the approval is recorded with your user id, total and time. All data keyed to the token's user id, never an id sent by the browser. Retailer credentials never reach the frontend or the LLM. |
 | **TinyFish** | Fetch reads live T&T search results for product research. Web Agent runs with a saved, signed-in T&T Browser Context Profile build the real cart, with live browser views embedded in the app. |
@@ -51,10 +64,15 @@ Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&
 
 ```
 src/
-  main.jsx          Auth0Provider (requests a token for the CartPilot API)
-  App.jsx           Login / logout shell
+  main.jsx          Auth0Provider (requests a token for the Autocart API)
+  App.jsx           App shell + step router (signed-in) / landing page (signed-out)
+  AppShell.jsx      Top bar, step navigation, cart summary rail
+  Landing.jsx       Signed-out landing page
+  ui.jsx            Shared UI kit: buttons, cards, chips, skeletons, icons, budget meter
+  useTask.js        Loads and polls the current shopping task
+  steps/            MealPlanStep, CartStep, BuildStep
+  dev/              Design preview with sample data (dev only)
   ProfileForm.jsx   Load and save the grocery profile
-  PlanPanel.jsx     Start a plan, poll it, show meals and the shopping list
   ReviewCart.jsx    Review screen: products, pack stepper, swap options, remove/restore, search again, live total vs budget
   ApproveCart.jsx   Approve & build: confirmation, build:cart step-up, sends the approved total
   CartBuild.jsx     Live TinyFish browser views, per-item outcomes, link to the T&T cart
@@ -92,7 +110,7 @@ All `/api/*` routes except health need `Authorization: Bearer <Auth0 access toke
 | GET | `/api/health` | none | Liveness check |
 | GET | `/api/profile` | `read:profile` | Your saved profile (defaults if none yet) |
 | PUT | `/api/profile` | `write:profile` | Validate and save your profile |
-| POST | `/api/shopping-tasks` | `read:profile` | Start a meal plan from your saved profile (+ optional `note`). Returns `202` with a task in `planning` state |
+| POST | `/api/shopping-tasks` | `read:profile` | Start a meal plan from your saved profile (+ optional `note`). Returns `202` with a task in `planning` state; when the plan is ready, T&T pricing starts automatically (`researching` → `priced`) |
 | GET | `/api/shopping-tasks` | `read:profile` | Your 10 most recent tasks |
 | GET | `/api/shopping-tasks/:id` | `read:profile` | One of your tasks: meals, shopping list, pantry-covered items, removed items, warnings, and T&T prices once found. Other users' tasks are `404` |
 | POST | `/api/shopping-tasks/:id/research` | `read:profile` | Look up every list item on T&T and price it (read-only; nothing is added to a cart). Returns `202` with status `researching`, then `priced`. Re-pricing keeps review choices where possible |
@@ -125,9 +143,9 @@ Requires Node 24+.
 
 - T&T's website answers "Access Denied" to automated **direct product-page links** and to **two agents on one account at once**, while its search pages keep working. The agent therefore uses TinyFish's stealth browser, starts at the home page, adds items from search results, and runs one at a time. On the same items this went from ~27 minutes / 222 steps with mostly failures to ~3 minutes / 19 steps with everything added.
 - Going straight to `search.html?query=…` instead of typing in the search box cut each item from 4–9 agent steps to 2–3 (the box only shows a suggestion dropdown first). The best runs add an item in ~30s.
-- What's left of the time is outside CartPilot: ~35s for TinyFish to start each browser, 8–35s per agent step depending on the session, slow-loading T&T pages, and a subscription popup. Two agents at once hide a slow session behind a fast one; T&T didn't block this with search pages.
+- What's left of the time is outside Autocart: ~35s for TinyFish to start each browser, 8–35s per agent step depending on the session, slow-loading T&T pages, and a subscription popup. Two agents at once hide a slow session behind a fast one; T&T didn't block this with search pages.
 - T&T's cart counts weight items in pounds, so the agent gets a pound target (e.g. "about 2 lb") and never reduces an existing amount; it used to cut 2 lb of pork to "1".
-- Prices come from T&T's online catalogue (default store), but the signed-in store may not stock every item ("Not at your store"). CartPilot now **learns each store's stock from the cart agent**: what it adds or finds out of stock is recorded per postal area (FSA, e.g. N6G). On the next price search, products that store didn't have are swapped for an option it did have, or flagged on the review screen before you approve. A single "couldn't find it" needs to happen twice before it counts, because agents occasionally miss a card.
+- Prices come from T&T's online catalogue (default store), but the signed-in store may not stock every item ("Not at your store"). Autocart now **learns each store's stock from the cart agent**: what it adds or finds out of stock is recorded per postal area (FSA, e.g. N6G). On the next price search, products that store didn't have are swapped for an option it did have, or flagged on the review screen before you approve. A single "couldn't find it" needs to happen twice before it counts, because agents occasionally miss a card.
 - **Why not price the user's store directly?** We tested it. T&T keeps the shopper's postal code and store code in browser storage (`x-postcode`, `x-prefered-store-code`) and sends both with every product search. A TinyFish remote browser can set the postal code, but T&T only maps a postal code to a store inside its pickup dialog, which needs a Google Map that doesn't load in the remote browser. Magento's standard `pickupLocations` query is disabled, and the saved TinyFish profile doesn't keep the store choice. With the right store code this would work; finding it automatically is future work.
 - A blocked agent used to keep trying for 100+ steps; it now stops at the first block and reports it as **blocked** (not "out of stock").
 - If the server restarts mid-build, leftover TinyFish runs are cancelled on startup so they don't keep costing money.

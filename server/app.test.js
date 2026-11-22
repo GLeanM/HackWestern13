@@ -79,6 +79,7 @@ before(async () => {
     planner: (...args) => fakePlanner(...args),
     researcher: (...args) => fakeResearcher(...args),
     cartBuilder: (...args) => fakeCartBuilder(...args),
+    autoPrice: false, // most tests drive pricing explicitly; auto-pricing has its own test
     log: { error() {} },
   });
   server = createServer(app);
@@ -662,4 +663,36 @@ test("store stock is learned from a cart build and used on the next price search
   assert.ok(after.result.research.warnings.some((w) => w.type === "store-stock"));
   void priced;
   fakeResearcher = async () => SAMPLE_RESEARCH;
+});
+
+test("auto-price: a new plan goes straight on to T&T pricing", async () => {
+  const autoDb = openDb(":memory:");
+  const keys = await generateKeyPair("RS256");
+  const jwk = { ...(await exportJWK(keys.publicKey)), kid: "auto", alg: "RS256", use: "sig" };
+  const jwks = createServer((_q, r) => { r.setHeader("Content-Type", "application/json"); r.end(JSON.stringify({ keys: [jwk] })); });
+  await listen(jwks);
+  const app = createApp({
+    authOptions: { issuer: ISSUER, audience: AUDIENCE, jwksUri: `http://127.0.0.1:${jwks.address().port}/`, tokenSigningAlg: "RS256" },
+    db: autoDb, planner: async () => SAMPLE_PLAN, researcher: reviewResearcher, log: { error() {} },
+  });
+  const srv = createServer(app);
+  await listen(srv);
+  const b = `http://127.0.0.1:${srv.address().port}`;
+  const tok = await new SignJWT({ scope: "read:profile write:profile" }).setProtectedHeader({ alg: "RS256", kid: "auto" })
+    .setSubject("auth0|auto").setIssuer(ISSUER).setAudience(AUDIENCE).setIssuedAt().setExpirationTime("5m").sign(keys.privateKey);
+  const req = (method, path, body) => fetch(b + path, { method, headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, body: body && JSON.stringify(body) }).then((r) => r.json());
+  try {
+    await req("PUT", "/api/profile", goodProfile);
+    const { task } = await req("POST", "/api/shopping-tasks", {});
+    const done = await waitFor(async () => {
+      const t = (await req("GET", `/api/shopping-tasks/${task.id}`)).task;
+      return t.status === "priced" && t;
+    });
+    assert.ok(done.result.research.items.length > 0);
+    assert.ok(done.review.total > 0);
+  } finally {
+    srv.close();
+    jwks.close();
+    autoDb.close();
+  }
 });

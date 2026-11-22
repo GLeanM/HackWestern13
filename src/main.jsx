@@ -11,7 +11,7 @@ createRoot(document.getElementById("root")).render(
       clientId={import.meta.env.VITE_AUTH0_CLIENT_ID}
       authorizationParams={{
         redirect_uri: window.location.origin,
-        // Access tokens are issued for the CartPilot API with these permissions.
+        // Access tokens are issued for the Autocart API with these permissions.
         audience: import.meta.env.VITE_AUTH0_AUDIENCE,
         scope: "openid profile email read:profile write:profile",
       }}

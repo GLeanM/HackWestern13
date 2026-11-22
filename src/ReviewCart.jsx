@@ -96,9 +96,7 @@ export default function ReviewCart({ task, setTask, api, stale }) {
   const pct = Math.min(100, (review.total / review.budget) * 100);
 
   return (
-    <div className={`prices${stale ? " stale" : ""}`}>
-      <h3>Review your cart</h3>
-      <p className="muted">Swap products, change pack counts, or remove what you don't need. Nothing is added to your T&amp;T cart until you approve it.</p>
+    <div className={`prices card${stale ? " stale" : ""}`}>
 
       {review.warnings.length > 0 && (
         <ul className="warnings">
@@ -215,14 +213,14 @@ export default function ReviewCart({ task, setTask, api, stale }) {
         <p className="muted small">
           {task.status === "built"
             ? "Changing anything here sends the cart back for approval."
-            : `Next: approve below and CartPilot's agent adds these ${review.readyForAgent} items to your T&T cart. You check out yourself.`}
+            : `Next: approve in Build cart and Autocart's agent adds these ${review.readyForAgent} items to your T&T cart. You check out yourself.`}
         </p>
       </div>
 
       <p className="muted small">
         Prices retrieved {fmtTime(research.retrievedAt)} by TinyFish. {research.storeNote}
         {research.store?.knownProducts > 0 &&
-          ` CartPilot also knows the stock of ${research.store.knownProducts} product${research.store.knownProducts === 1 ? "" : "s"} at your ${research.store.fsa} store from past cart builds.`}
+          ` Autocart also knows the stock of ${research.store.knownProducts} product${research.store.knownProducts === 1 ? "" : "s"} at your ${research.store.fsa} store from past cart builds.`}
       </p>
     </div>
   );

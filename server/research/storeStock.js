@@ -1,4 +1,4 @@
-// What CartPilot has learned about stock at the user's T&T store.
+// What Autocart has learned about stock at the user's T&T store.
 //
 // Prices come from T&T's online catalogue (TinyFish Fetch can't choose a
 // store), but the cart agent shops signed in at the user's own store. Its

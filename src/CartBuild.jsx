@@ -44,11 +44,11 @@ export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) 
   const status = building ? "building" : cartRun.status;
 
   return (
-    <section className="cart-build" aria-live="polite">
+    <section className="cart-build card" aria-live="polite">
       <div className="build-head">
         <h3>{STATUS_TEXT[status] ?? "Cart build"}</h3>
         {building && api && (
-          <button type="button" className="secondary danger" onClick={stop} disabled={stopping}>
+          <button type="button" className="btn btn-danger" onClick={stop} disabled={stopping}>
             {stopping ? "Stopping…" : "Stop agent"}
           </button>
         )}
@@ -123,7 +123,7 @@ export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) 
           )}
           {cartRun.counts?.outOfStock > 0 && (
             <p className="muted small">
-              CartPilot's prices come from T&amp;T's online catalogue, but your store doesn't stock everything. Pick another option for those items in the review above and rebuild, or choose a substitute on T&amp;T.
+              Autocart's prices come from T&amp;T's online catalogue, but your store doesn't stock everything. Pick another option for those items in the review above and rebuild, or choose a substitute on T&amp;T.
             </p>
           )}
           {cartRun.counts?.blocked > 0 && (
@@ -132,8 +132,8 @@ export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) 
             </p>
           )}
           <div className="actions">
-            <a className="button" href={cartRun.cartUrl ?? T_AND_T_HOME} target="_blank" rel="noreferrer">Open my T&amp;T cart</a>
-            <span className="muted">Choose delivery or pickup and check out on T&amp;T yourself. CartPilot never pays.</span>
+            <a className="btn btn-primary" href={cartRun.cartUrl ?? T_AND_T_HOME} target="_blank" rel="noreferrer">Open my T&amp;T cart</a>
+            <span className="muted">Choose delivery or pickup and check out on T&amp;T yourself. Autocart never pays.</span>
           </div>
           <p className="muted small">
             Your T&amp;T cart also keeps anything that was already in it. T&amp;T shows the final subtotal once you pick delivery or pickup.
