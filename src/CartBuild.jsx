@@ -5,7 +5,7 @@ const OUTCOME = {
   added: { label: "Added", cls: "chip-ok" },
   updated: { label: "Quantity set", cls: "chip-ok" },
   out_of_stock: { label: "Out of stock", cls: "chip-bad" },
-  unavailable: { label: "Unavailable", cls: "chip-bad" },
+  unavailable: { label: "Not at your store", cls: "chip-bad" },
   failed: { label: "Failed", cls: "chip-bad" },
   blocked: { label: "Blocked by T&T", cls: "chip-warn" },
   cancelled: { label: "Stopped", cls: "chip-muted" },
@@ -18,6 +18,11 @@ const STATUS_TEXT = {
   cancelled: "You stopped the agent.",
 };
 const T_AND_T_HOME = "https://www.tntsupermarket.com/eng/";
+const STEP_COST = 0.016; // TinyFish agent price per step (USD)
+const elapsed = (from, to = Date.now()) => {
+  const s = Math.max(0, Math.round((new Date(to) - new Date(from)) / 1000));
+  return s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s` : `${s}s`;
+};
 
 export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) {
   const [stopping, setStopping] = useState(false);
@@ -52,7 +57,7 @@ export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) 
         <p className="muted small">
           {cartRun.retrying
             ? "T&T blocked part of the first attempt, so the agent is retrying those items in a fresh session."
-            : "One agent at a time, so T&T doesn't block it. If you stop, items already added stay in your T&T cart."}
+            : `${(cartRun.concurrency ?? 1) > 1 ? `${cartRun.concurrency} agents at once` : "One agent at a time, so T&T doesn't block it"}. Started ${elapsed(cartRun.startedAt)} ago. If you stop, items already added stay in your T&T cart.`}
         </p>
       )}
       {stopError && <p className="error small" role="alert">{stopError}</p>}
@@ -69,8 +74,10 @@ export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) 
                 </div>
               )}
               <span className="muted small">
-                Agent {r.batch + 1} · {r.status.toLowerCase()}{r.steps ? ` · ${r.steps} steps` : ""}
+                Agent {r.batch + 1}{r.attempt > 1 ? " (retry)" : ""} · {r.status.toLowerCase()}
+                {r.startedAt ? ` · ${elapsed(r.startedAt)}` : ""}{r.steps ? ` · ${r.steps} steps` : ""}
               </span>
+              {r.lastAction && <span className="agent-action">Agent: {r.lastAction}</span>}
             </div>
           ))}
         </div>
@@ -110,7 +117,13 @@ export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) 
               {cartRun.counts.blocked ? ` · ${cartRun.counts.blocked} blocked by T&T` : ""}
               {cartRun.counts.cancelled ? ` · ${cartRun.counts.cancelled} not done (stopped)` : ""}
               {cartRun.counts.failed ? ` · ${cartRun.counts.failed} failed` : ""}
-              {cartRun.cartSubtotal && <> · cart subtotal (as read by the agent) <strong>{cartRun.cartSubtotal}</strong></>}
+              {cartRun.finishedAt && ` · took ${elapsed(cartRun.startedAt, cartRun.finishedAt)}`}
+              {cartRun.steps ? ` · ${cartRun.steps} agent steps (≈ $${(cartRun.steps * STEP_COST).toFixed(2)})` : ""}
+            </p>
+          )}
+          {cartRun.counts?.outOfStock > 0 && (
+            <p className="muted small">
+              CartPilot's prices come from T&amp;T's online catalogue, but your store doesn't stock everything. Pick another option for those items in the review above and rebuild, or choose a substitute on T&amp;T.
             </p>
           )}
           {cartRun.counts?.blocked > 0 && (
@@ -129,7 +142,7 @@ export default function CartBuild({ cartRun, building, taskId, api, onUpdate }) 
             Approved {new Date(cartRun.approval.approvedAt).toLocaleString()} with the build:cart permission.{" "}
             {cartRun.runs?.filter((r) => r.runId).map((r, i) => (
               <a key={r.runId} href={`https://agent.tinyfish.ai/runs/${encodeURIComponent(r.runId)}`} target="_blank" rel="noreferrer">
-                {i ? ", " : ""}TinyFish run {r.batch + 1}
+                {i ? ", " : ""}TinyFish run {r.batch + 1}{r.attempt > 1 ? " (retry)" : ""}
               </a>
             ))}
           </p>

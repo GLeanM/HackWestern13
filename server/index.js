@@ -47,6 +47,8 @@ const app = createApp({
           profileId: process.env.TINYFISH_PROFILE_ID,
           save,
           signal,
+          // CART_AGENT_CONCURRENCY=1 forces one agent at a time (max 2: the TinyFish wallet limit).
+          concurrency: Math.max(1, Math.min(2, Number(process.env.CART_AGENT_CONCURRENCY) || 2)),
         })
     : null,
   corsOrigins: (process.env.CORS_ORIGINS ?? "http://localhost:5173").split(","),

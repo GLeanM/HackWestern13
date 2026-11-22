@@ -18,7 +18,7 @@ Sign in (Auth0) → Save profile → Plan meals (LLM) → Look up products on T&
 3. **Plan.** Google Gemini (structured JSON output) produces a structured meal plan and ingredient list. Server code (not the LLM) merges duplicates, removes pantry items and exclusions.
 4. **Research.** TinyFish Fetch reads T&T's search page for every item at once (about 30–40s for a full list). Server code parses the results, screens out allergens and "different foods" (quail eggs aren't eggs), picks the cheapest pack that covers the recipe quantity, retries simpler searches when nothing matches, and totals the cart against the budget.
 5. **Review.** You swap to another product, change pack counts, remove or restore items, or search T&T again with your own words. The total updates instantly and is re-computed by the server (it never trusts prices from the browser). Warnings name the biggest lines when you're over budget.
-6. **Approve & build cart.** Approving asks Auth0 for the `build:cart` permission at that moment (consent popup the first time). The server checks the permission and that the total and item count match what you approved, records the approval, then starts a TinyFish browser agent signed in to T&T (stealth browser, one agent at a time, up to 5 items per run). Like a shopper, it starts on T&T's home page, searches for each item, and sets the matching product's cart quantity to exactly what you chose. You can watch it live and **stop it** at any time (items already added stay in your cart). If T&T's website blocks the agent ("Access Denied"), it stops right away instead of burning time, and those items are retried once in a fresh session. Each item reports added / quantity set / out of stock / blocked / stopped, and the agent is told never to check out or pay; you finish on T&T.
+6. **Approve & build cart.** Approving asks Auth0 for the `build:cart` permission at that moment (consent popup the first time). The server checks the permission and that the total and item count match what you approved, records the approval, then starts TinyFish browser agents signed in to T&T (stealth browser, two at a time, up to 5 items each). Each agent goes straight to T&T's search results page for an item and sets the matching product's cart quantity to exactly what you chose (for items sold by weight, a target in pounds). A live feed shows what each agent is doing, how long it has taken and how many steps (≈ cost) it has used. You can watch it live and **stop it** at any time (items already added stay in your cart). If T&T's website blocks an agent ("Access Denied"), it stops right away instead of burning time; blocked items, and items an agent ran out of time on or couldn't load, are retried once in a fresh session (one agent at a time after a block). Each item reports added / quantity set / out of stock / blocked / stopped, and the agent is told never to check out or pay; you finish on T&T.
 
 ### Sponsor integrations
 
@@ -124,9 +124,26 @@ Requires Node 24+.
 ## Lessons from live testing
 
 - T&T's website answers "Access Denied" to automated **direct product-page links** and to **two agents on one account at once**, while its search pages keep working. The agent therefore uses TinyFish's stealth browser, starts at the home page, adds items from search results, and runs one at a time. On the same items this went from ~27 minutes / 222 steps with mostly failures to ~3 minutes / 19 steps with everything added.
+- Going straight to `search.html?query=…` instead of typing in the search box cut each item from 4–9 agent steps to 2–3 (the box only shows a suggestion dropdown first). The best runs add an item in ~30s.
+- What's left of the time is outside CartPilot: ~35s for TinyFish to start each browser, 8–35s per agent step depending on the session, slow-loading T&T pages, and a subscription popup. Two agents at once hide a slow session behind a fast one; T&T didn't block this with search pages.
+- T&T's cart counts weight items in pounds, so the agent gets a pound target (e.g. "about 2 lb") and never reduces an existing amount; it used to cut 2 lb of pork to "1".
+- Prices come from T&T's online catalogue (default store), but the signed-in store may not stock every item ("Not at your store"). Pricing from the user's own store is the main remaining accuracy gap.
 - A blocked agent used to keep trying for 100+ steps; it now stops at the first block and reports it as **blocked** (not "out of stock").
-- T&T's cart counts weight items in pounds (e.g. 1.5), so those aren't flagged as quantity mismatches.
 - If the server restarts mid-build, leftover TinyFish runs are cancelled on startup so they don't keep costing money.
+
+### Measured cart-build times (live, T&T account)
+
+| Version | Items | Wall time | Agent steps | Outcome |
+| --- | --- | --- | --- | --- |
+| Product-page links, 2 agents (original) | 9 | ~20 min | 222 | Mostly "Access Denied" |
+| Home page + search box, 1 agent (PR #6) | 5 | 7.5 min (hit time cap) | 41 | 4 added, 1 falsely "unavailable" |
+| Search-results URL, 1 agent | 6 | 6.6 min | 25 | All handled; 2 not stocked at the store |
+| Search-results URL, 2 agents + retry | 4 | 5.6 min | 20 | All added, pound targets correct |
+
+### Future speed-ups
+- Add items through T&T's own cart API from inside a TinyFish browser session (seconds instead of minutes), at the cost of bypassing the browsing agent and handling the user's T&T session token.
+- Start the next agent's browser early to hide the ~35s start-up.
+- Price items from the user's own T&T store so "Not at your store" items are caught at review time.
 
 ## Safety principles
 
