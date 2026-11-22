@@ -127,7 +127,8 @@ Requires Node 24+.
 - Going straight to `search.html?query=…` instead of typing in the search box cut each item from 4–9 agent steps to 2–3 (the box only shows a suggestion dropdown first). The best runs add an item in ~30s.
 - What's left of the time is outside CartPilot: ~35s for TinyFish to start each browser, 8–35s per agent step depending on the session, slow-loading T&T pages, and a subscription popup. Two agents at once hide a slow session behind a fast one; T&T didn't block this with search pages.
 - T&T's cart counts weight items in pounds, so the agent gets a pound target (e.g. "about 2 lb") and never reduces an existing amount; it used to cut 2 lb of pork to "1".
-- Prices come from T&T's online catalogue (default store), but the signed-in store may not stock every item ("Not at your store"). Pricing from the user's own store is the main remaining accuracy gap.
+- Prices come from T&T's online catalogue (default store), but the signed-in store may not stock every item ("Not at your store"). CartPilot now **learns each store's stock from the cart agent**: what it adds or finds out of stock is recorded per postal area (FSA, e.g. N6G). On the next price search, products that store didn't have are swapped for an option it did have, or flagged on the review screen before you approve. A single "couldn't find it" needs to happen twice before it counts, because agents occasionally miss a card.
+- **Why not price the user's store directly?** We tested it. T&T keeps the shopper's postal code and store code in browser storage (`x-postcode`, `x-prefered-store-code`) and sends both with every product search. A TinyFish remote browser can set the postal code, but T&T only maps a postal code to a store inside its pickup dialog, which needs a Google Map that doesn't load in the remote browser. Magento's standard `pickupLocations` query is disabled, and the saved TinyFish profile doesn't keep the store choice. With the right store code this would work; finding it automatically is future work.
 - A blocked agent used to keep trying for 100+ steps; it now stops at the first block and reports it as **blocked** (not "out of stock").
 - If the server restarts mid-build, leftover TinyFish runs are cancelled on startup so they don't keep costing money.
 
@@ -143,7 +144,7 @@ Requires Node 24+.
 ### Future speed-ups
 - Add items through T&T's own cart API from inside a TinyFish browser session (seconds instead of minutes), at the cost of bypassing the browsing agent and handling the user's T&T session token.
 - Start the next agent's browser early to hide the ~35s start-up.
-- Price items from the user's own T&T store so "Not at your store" items are caught at review time.
+- Price items from the user's own T&T store directly (needs T&T's postal-code-to-store mapping; see above).
 
 ## Safety principles
 
