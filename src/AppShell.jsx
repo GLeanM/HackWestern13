@@ -31,8 +31,8 @@ export function TopBar({ user, onLogout, task }) {
       <Logo />
       <div className="topbar-right">
         {task && (
-          <span className={`status-pill ${busy ? "busy" : ""}`}>
-            {busy ? <span className="pulse" aria-hidden="true" /> : <Icon name="check" size={12} />}
+          <span className={`status-pill ${busy ? "busy" : ""} ${task.status === "failed" ? "bad" : ""}`}>
+            <span className="dot" aria-hidden="true" />
             {STATUS_TEXT[task.status] ?? task.status}
           </span>
         )}
@@ -74,7 +74,7 @@ export function StepNav({ step, setStep, unlocked, done }) {
                 disabled={locked}
                 onClick={() => setStep(s.id)}
               >
-                <span className="step-num">{isDone ? <Icon name="check" size={14} /> : locked ? <Icon name="lock" size={12} /> : i + 1}</span>
+                <span className="step-num">{isDone ? <Icon name="check" size={14} /> : String(i + 1).padStart(2, "0")}</span>
                 <span className="step-text">
                   <span className="step-label">{s.label}</span>
                   <span className="step-hint">{s.hint}</span>
@@ -84,9 +84,7 @@ export function StepNav({ step, setStep, unlocked, done }) {
           );
         })}
       </ol>
-      <p className="steps-foot muted small">
-        <Icon name="shield" size={14} /> Secured with Auth0 · Agent by TinyFish
-      </p>
+      <p className="steps-foot muted small">Sign-in by Auth0. Cart agent by TinyFish.</p>
     </nav>
   );
 }
@@ -100,19 +98,23 @@ export function Summary({ task, profile, step, setStep }) {
   return (
     <aside className="summary" aria-label="Cart summary">
       <div className="summary-inner">
-        <h2 className="summary-title">Summary</h2>
+        <h2 className="summary-title">Your order</h2>
         {review ? (
           <BudgetMeter total={review.total} budget={budget} />
         ) : task?.status === "researching" ? (
           <div className="summary-wait"><Spinner label="Pricing at T&T…" /></div>
         ) : (
-          <p className="muted small">Budget {money(budget)}{profile ? ` · ${profile.householdSize} ${profile.householdSize === 1 ? "person" : "people"} · ${profile.shoppingDays} days` : ""}</p>
+          <dl className="summary-stats">
+            <div><dt>Budget</dt><dd>{money(budget)}</dd></div>
+            {profile && <div><dt>People</dt><dd>{profile.householdSize}</dd></div>}
+            {profile && <div><dt>Days</dt><dd>{profile.shoppingDays}</dd></div>}
+          </dl>
         )}
         {review && (
           <dl className="summary-stats">
-            <div><dt>Items</dt><dd>{review.itemCount}</dd></div>
-            <div><dt>For agent</dt><dd>{review.readyForAgent}</dd></div>
             {task.result?.meals && <div><dt>Meals</dt><dd>{task.result.meals.length}</dd></div>}
+            <div><dt>Items</dt><dd>{review.itemCount}</dd></div>
+            <div><dt>Ready for agent</dt><dd>{review.readyForAgent}</dd></div>
           </dl>
         )}
         {next && (
@@ -124,7 +126,7 @@ export function Summary({ task, profile, step, setStep }) {
 }
 
 function nextAction(task, step) {
-  if (!task) return step === "plan" ? null : { step: "plan", label: "Plan meals", icon: "spark" };
+  if (!task) return step === "plan" ? null : { step: "plan", label: "Plan meals" };
   if (task.status === "priced" && step !== "build") return { step: "build", label: "Build my T&T cart", icon: "cart" };
   if ((task.status === "researching" || task.status === "priced") && step === "plan") return { step: "cart", label: "View cart", icon: "list" };
   if ((task.status === "building" || task.status === "built") && step !== "build") return { step: "build", label: task.status === "building" ? "Watch the agent" : "See your T&T cart", icon: "cart" };

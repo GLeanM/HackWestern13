@@ -16,6 +16,8 @@ const paths = {
   store: "M4 9l1.5-5h13L20 9 M4 9v11h16V9 M4 9h16 M9 20v-6h6v6",
   shield: "M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z M8.5 12l2.5 2.5 4.5-5",
   chevron: "M9 6l6 6-6 6",
+  info: "M12 11v6 M12 7.5h.01 M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
+  clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 7v5l3 2",
   alert: "M12 8v5 M12 16.5h.01 M10.3 3.9L2.5 18a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z",
 };
 
@@ -31,8 +33,11 @@ export function Icon({ name, size = 18, className = "" }) {
 export function Logo({ compact = false }) {
   return (
     <span className="logo">
-      <span className="logo-mark"><Icon name="cart" size={18} /></span>
-      {!compact && <span className="logo-word">Auto<span>cart</span></span>}
+      <svg className="logo-mark" width="18" height="22" viewBox="0 0 18 22" aria-hidden="true">
+        <path d="M0 0h18v22l-3-2-3 2-3-2-3 2-3-2-3 2z" fill="currentColor" />
+        <path d="M4 6h10M4 10h10M4 14h6" stroke="var(--surface)" strokeWidth="1.6" />
+      </svg>
+      {!compact && <span className="logo-word">autocart</span>}
     </span>
   );
 }
@@ -106,7 +111,7 @@ export function BudgetMeter({ total, budget, compact = false }) {
 export function Notice({ tone = "info", children }) {
   return (
     <div className={`notice notice-${tone}`} role={tone === "danger" ? "alert" : undefined}>
-      <Icon name={tone === "danger" || tone === "warning" ? "alert" : "spark"} size={16} />
+      <Icon name={tone === "danger" || tone === "warning" ? "alert" : "info"} size={16} />
       <div>{children}</div>
     </div>
   );
