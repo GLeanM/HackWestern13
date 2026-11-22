@@ -361,3 +361,118 @@ test("pricing: other users get 404, unfinished plans 409, one at a time", async 
     fakePlanner = async () => SAMPLE_PLAN;
   }
 });
+
+// --- Review screen ----------------------------------------------------------
+
+const opt = (name, packPrice, packages = 1) => ({
+  name, packPrice, packages, cost: Math.round(packPrice * packages * 100) / 100,
+  url: `https://www.tntsupermarket.com/eng/1234-${name.toLowerCase().replace(/\W+/g, "-")}.html`, flags: [],
+});
+// Research shaped like research.js output, built from whatever list it's given.
+const reviewResearcher = async (toBuy) => ({
+  items: toBuy.map((it) => it.searchTerm === "nothing here"
+    ? { name: it.name, category: it.category, quantities: it.quantities, status: "not_found", query: it.searchTerm, chosen: null, alternatives: [], excluded: [] }
+    : {
+      name: it.name, category: it.category, quantities: it.quantities, status: "matched", query: it.searchTerm,
+      chosen: opt(`${it.searchTerm} A`, 2.5, 2), alternatives: [opt(`${it.searchTerm} B`, 4)], excluded: [],
+    }),
+  total: 0, budget: 100, overBudget: false, warnings: [],
+});
+
+async function pricedTask(sub) {
+  const { tok, id } = await plannedTask(sub);
+  fakeResearcher = reviewResearcher;
+  await call("POST", `/api/shopping-tasks/${id}/research`, { tok });
+  const task = await settled(tok, id);
+  assert.equal(task.status, "priced");
+  return { tok, id, task };
+}
+
+test("priced task comes with a server-computed review", async () => {
+  const { tok, id } = await pricedTask("auth0|review-get");
+  const { task } = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json;
+  const n = task.result.research.items.length;
+  assert.equal(task.result.selections.length, n);
+  assert.equal(task.review.itemCount, n);
+  assert.equal(task.review.total, Math.round(n * 5 * 100) / 100); // 2 packs × $2.50 each
+});
+
+test("PATCH cart: swap, pack count, remove — totals come from the server", async () => {
+  const { tok, id, task } = await pricedTask("auth0|review-edit");
+  const [a, b] = task.result.research.items;
+  const res = await call("PATCH", `/api/shopping-tasks/${id}/cart`, {
+    tok,
+    body: { edits: [{ index: 0, name: a.name, option: 1, packages: 3 }, { index: 1, name: b.name, removed: true }] },
+  });
+  assert.equal(res.status, 200);
+  const lines = res.json.task.review.lines;
+  assert.equal(lines[0].cost, 12); // 3 × $4
+  assert.equal(lines[1].removed, true);
+  // Persisted.
+  const again = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task;
+  assert.deepEqual(again.result.selections[0], { option: 1, packages: 3, removed: false });
+  assert.equal(again.review.total, res.json.task.review.total);
+});
+
+test("PATCH cart rejects prices from the client, bad edits, other users, and unpriced tasks", async () => {
+  const { tok, id, task } = await pricedTask("auth0|review-bad");
+  const name = task.result.research.items[0].name;
+  const price = await call("PATCH", `/api/shopping-tasks/${id}/cart`, { tok, body: { edits: [{ index: 0, name, packPrice: 0.01 }] } });
+  assert.equal(price.status, 400);
+  assert.equal(price.json.fields[0].field, "packPrice");
+  assert.equal((await call("PATCH", `/api/shopping-tasks/${id}/cart`, { tok, body: { edits: [{ index: 0, name, option: 7 }] } })).status, 400);
+  assert.equal((await call("PATCH", `/api/shopping-tasks/${id}/cart`, { tok, body: { edits: [], total: 1 } })).status, 400);
+  const other = await token("auth0|review-intruder");
+  assert.equal((await call("PATCH", `/api/shopping-tasks/${id}/cart`, { tok: other, body: { edits: [{ index: 0, name, removed: true }] } })).status, 404);
+  const { tok: t2, id: planned } = await plannedTask("auth0|review-unpriced");
+  assert.equal((await call("PATCH", `/api/shopping-tasks/${planned}/cart`, { tok: t2, body: { edits: [{ index: 0, name: "eggs", removed: true }] } })).status, 409);
+});
+
+test("search again replaces one item's options and resets its selection", async () => {
+  const { tok, id, task } = await pricedTask("auth0|review-search");
+  const name = task.result.research.items[0].name;
+  await call("PATCH", `/api/shopping-tasks/${id}/cart`, { tok, body: { edits: [{ index: 0, name, option: 1, packages: 5 }] } });
+  const res = await call("POST", `/api/shopping-tasks/${id}/items/0/search`, { tok, body: { query: "silken tofu" } });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.found, true);
+  const item = res.json.task.result.research.items[0];
+  assert.equal(item.name, name);
+  assert.equal(item.query, "silken tofu");
+  assert.equal(item.chosen.name, "silken tofu A");
+  assert.deepEqual(res.json.task.result.selections[0], { option: 0, packages: 2, removed: false });
+});
+
+test("search again: not found keeps the old pick; validation; busy lock", async () => {
+  const { tok, id, task } = await pricedTask("auth0|review-search2");
+  const before = task.result.research.items[0].chosen.name;
+  const miss = await call("POST", `/api/shopping-tasks/${id}/items/0/search`, { tok, body: { query: "nothing here" } });
+  assert.equal(miss.json.found, false);
+  assert.equal(miss.json.task.result.research.items[0].chosen.name, before);
+  assert.equal((await call("POST", `/api/shopping-tasks/${id}/items/0/search`, { tok, body: { query: "" } })).status, 400);
+  assert.equal((await call("POST", `/api/shopping-tasks/${id}/items/99/search`, { tok, body: { query: "x" } })).status, 404);
+
+  let release;
+  fakeResearcher = () => new Promise((r) => (release = () => r(reviewResearcher([{ name: "x", searchTerm: "slow" }]))));
+  try {
+    const pending = call("POST", `/api/shopping-tasks/${id}/items/0/search`, { tok, body: { query: "slow" } });
+    await waitFor(() => release);
+    const name = task.result.research.items[1].name;
+    assert.equal((await call("POST", `/api/shopping-tasks/${id}/items/1/search`, { tok, body: { query: "x" } })).status, 409);
+    assert.equal((await call("PATCH", `/api/shopping-tasks/${id}/cart`, { tok, body: { edits: [{ index: 1, name, removed: true }] } })).status, 409);
+    assert.equal((await call("POST", `/api/shopping-tasks/${id}/research`, { tok })).status, 409);
+    release();
+    assert.equal((await pending).status, 200);
+  } finally {
+    fakeResearcher = reviewResearcher;
+  }
+});
+
+test("re-pricing the whole list keeps removals", async () => {
+  const { tok, id, task } = await pricedTask("auth0|review-reprice");
+  const name = task.result.research.items[1].name;
+  await call("PATCH", `/api/shopping-tasks/${id}/cart`, { tok, body: { edits: [{ index: 1, name, removed: true }] } });
+  await call("POST", `/api/shopping-tasks/${id}/research`, { tok });
+  const after = await settled(tok, id);
+  assert.equal(after.result.selections[1].removed, true);
+  fakeResearcher = async () => SAMPLE_RESEARCH;
+});

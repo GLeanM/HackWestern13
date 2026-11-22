@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { consolidate } from "./planner/consolidate.js";
+import { carryOver, defaultSelections, summarize } from "./review/cart.js";
 
 const MAX_NOTE = 500;
 
@@ -55,7 +56,11 @@ export function startResearchTask({ db, researcher, sub, task, profile, log = co
   (async () => {
     try {
       const research = await researcher(plan.toBuy, profile);
-      db.setTaskState(sub, task.id, { status: "priced", result: { ...plan, research } });
+      // Re-pricing keeps the user's review decisions where they still apply.
+      const selections = plan.research
+        ? carryOver(plan.research, plan.selections, research)
+        : defaultSelections(research);
+      db.setTaskState(sub, task.id, { status: "priced", result: { ...plan, research, selections } });
     } catch (err) {
       log.error(`[task ${task.id}] pricing failed:`, err.message);
       db.setTaskState(sub, task.id, {
@@ -65,4 +70,21 @@ export function startResearchTask({ db, researcher, sub, task, profile, log = co
       });
     }
   })();
+}
+
+/** Selections for a priced task (older tasks priced before reviews existed get defaults). */
+export function selectionsOf(result) {
+  const sel = result?.selections;
+  return Array.isArray(sel) && sel.length === result.research.items.length ? sel : defaultSelections(result.research);
+}
+
+/** Adds the server-computed review (lines, total, warnings) to a priced task. */
+export function withReview(task) {
+  if (!task || task.status !== "priced" || !task.result?.research) return task;
+  const selections = selectionsOf(task.result);
+  return {
+    ...task,
+    result: { ...task.result, selections },
+    review: summarize(task.result.research, selections, task.result.research.budget),
+  };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useApi } from "./api.js";
-import PriceTable from "./PriceTable.jsx";
+import ReviewCart from "./ReviewCart.jsx";
 
 const POLL_MS = 2000;
 const SLOT_ORDER = { breakfast: 0, lunch: 1, dinner: 2 };
@@ -91,14 +91,19 @@ export default function PlanPanel({ profileSaved }) {
               <p className="muted"><span className="spinner" aria-hidden="true" /> TinyFish is searching T&amp;T for each item… usually 30–60 seconds.</p>
             ) : (
               <div className="actions">
-                <button type="button" onClick={price}>
+                <button type="button" className={task.status === "priced" ? "secondary" : ""} onClick={price}>
                   {task.status === "priced" ? "Refresh T&T prices" : "Find prices on T&T"}
                 </button>
+                {task.status === "priced" && (
+                  <span className="muted">Re-checking prices keeps your removals and picks where possible.</span>
+                )}
                 {task.error && <span className="error">{task.error}</span>}
               </div>
             )}
           </div>
-          {task.result.research && <PriceTable research={task.result.research} stale={task.status === "researching"} />}
+          {task.result.research && (
+            <ReviewCart task={task} setTask={setTask} api={api} stale={task.status === "researching"} />
+          )}
         </PlanResult>
       )}
     </section>

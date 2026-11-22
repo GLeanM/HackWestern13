@@ -2,7 +2,8 @@ import express from "express";
 import cors from "cors";
 import { auth, requiredScopes } from "express-oauth2-jwt-bearer";
 import { validateProfile, DEFAULT_PROFILE } from "./profile.js";
-import { validateTaskInput, startPlanningTask, startResearchTask } from "./tasks.js";
+import { validateTaskInput, startPlanningTask, startResearchTask, selectionsOf, withReview } from "./tasks.js";
+import { applyEdits, defaultSelection } from "./review/cart.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -49,7 +50,22 @@ export function createApp({ authOptions, db, planner, researcher, corsOrigins = 
     res.json({ profile, saved: true });
   });
 
-  // --- Shopping tasks (meal plan → shopping list; later: products and cart) ---
+  // Tasks with a single-item T&T search in flight (in memory; cleared on restart).
+  const busy = new Set();
+  const loadPriced = (req, res) => {
+    const sub = userSub(req);
+    const task = UUID_RE.test(req.params.id) ? db.getTask(sub, req.params.id) : null;
+    if (!task) return void res.status(404).json({ error: "not_found" });
+    if (task.status !== "priced") {
+      return void res.status(409).json({ error: "not_priced", message: "Find T&T prices for this plan first." });
+    }
+    if (busy.has(`${sub}:${task.id}`)) {
+      return void res.status(409).json({ error: "search_in_progress", message: "Wait for the current search to finish." });
+    }
+    return { sub, task };
+  };
+
+  // --- Shopping tasks (meal plan → shopping list → T&T prices → review) ---
   // Planning reads the user's profile, so it needs read:profile. The scope that
   // lets the agent touch the real cart (build:cart) is reserved for that step.
 
@@ -78,7 +94,7 @@ export function createApp({ authOptions, db, planner, researcher, corsOrigins = 
     // 404 (not 403) for other users' tasks so ids can't be probed.
     const task = UUID_RE.test(req.params.id) ? db.getTask(userSub(req), req.params.id) : null;
     if (!task) return res.status(404).json({ error: "not_found" });
-    res.json({ task });
+    res.json({ task: withReview(task) });
   });
 
   // Look up and price the task's shopping list on T&T (read-only web research;
@@ -93,12 +109,70 @@ export function createApp({ authOptions, db, planner, researcher, corsOrigins = 
     if (!task.result?.toBuy?.length) {
       return res.status(409).json({ error: "empty_list", message: "There's nothing on this shopping list to price." });
     }
-    if (db.activeTaskCount(sub) > 0 || !db.claimResearch(sub, task.id)) {
+    if (busy.has(`${sub}:${task.id}`) || db.activeTaskCount(sub) > 0 || !db.claimResearch(sub, task.id)) {
       return res.status(409).json({ error: "task_in_progress", message: "Something is already running. Wait for it to finish." });
     }
     const { updatedAt: _ignored, ...profile } = db.getProfile(sub) ?? task.input.profile;
     startResearchTask({ db, researcher, sub, task, profile, log });
     res.status(202).json({ task: db.getTask(sub, task.id) });
+  });
+
+  // Review edits: swap option, change pack count, remove/restore. Prices are
+  // recomputed from the stored research; the client only sends choices.
+  api.patch("/shopping-tasks/:id/cart", requiredScopes(SCOPES.readProfile), (req, res) => {
+    const body = req.body;
+    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((k) => k !== "edits")) {
+      return res.status(400).json({ error: "invalid_edits", fields: [{ field: "body", message: "expected { edits: [...] }" }] });
+    }
+    const loaded = loadPriced(req, res);
+    if (!loaded) return;
+    const { sub, task } = loaded;
+    const { selections, errors } = applyEdits(task.result.research, selectionsOf(task.result), body.edits);
+    if (errors) return res.status(400).json({ error: "invalid_edits", fields: errors });
+    db.setTaskState(sub, task.id, { status: "priced", result: { ...task.result, selections } });
+    res.json({ task: withReview(db.getTask(sub, task.id)) });
+  });
+
+  // Search T&T again for one item with the user's own words (one TinyFish
+  // fetch, ~25–40s). Waits for the result.
+  api.post("/shopping-tasks/:id/items/:index/search", requiredScopes(SCOPES.readProfile), async (req, res, next) => {
+    const body = req.body ?? {};
+    const query = typeof body.query === "string" ? body.query.trim() : "";
+    if (Object.keys(body).some((k) => k !== "query") || query.length < 1 || query.length > 60) {
+      return res.status(400).json({ error: "invalid_query", message: "Enter 1–60 characters to search for." });
+    }
+    const loaded = loadPriced(req, res);
+    if (!loaded) return;
+    const { sub, task } = loaded;
+    const index = Number(req.params.index);
+    const item = Number.isInteger(index) ? task.result.research.items[index] : undefined;
+    if (!item) return res.status(404).json({ error: "not_found" });
+    if (db.activeTaskCount(sub) > 0) {
+      return res.status(409).json({ error: "task_in_progress", message: "Something is already running. Wait for it to finish." });
+    }
+
+    const key = `${sub}:${task.id}`;
+    busy.add(key);
+    try {
+      const { updatedAt: _ignored, ...profile } = db.getProfile(sub) ?? task.input.profile;
+      const one = await researcher([{ name: item.name, category: item.category, quantities: item.quantities, searchTerm: query }], profile);
+      const found = one.items?.[0];
+      const current = db.getTask(sub, task.id);
+      if (!found?.chosen) {
+        return res.json({ task: withReview(current), found: false, message: `Nothing on T&T matched “${query}”. Your previous pick is unchanged.` });
+      }
+      const research = { ...current.result.research, items: [...current.result.research.items] };
+      research.items[index] = { ...item, status: found.status, query: found.query, chosen: found.chosen, alternatives: found.alternatives, excluded: found.excluded };
+      const selections = [...selectionsOf(current.result)];
+      selections[index] = defaultSelection(research.items[index]);
+      db.setTaskState(sub, task.id, { status: "priced", result: { ...current.result, research, selections } });
+      res.json({ task: withReview(db.getTask(sub, task.id)), found: true });
+    } catch (err) {
+      log.error(`[task ${task.id}] item search failed:`, err.message);
+      res.status(502).json({ error: "search_failed", message: "Couldn't reach T&T. Try again in a moment." });
+    } finally {
+      busy.delete(key);
+    }
   });
 
   app.use("/api", api);
