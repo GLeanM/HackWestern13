@@ -69,7 +69,9 @@ export function createAgentClient({ apiKey, fetchImpl = fetch }) {
         result: r.result ?? null,
         error: r.error ?? null,
         streamingUrl: r.streaming_url ?? null,
-        steps: r.num_of_steps ?? null,
+        // num_of_steps is null while running; count the step log instead.
+        steps: r.num_of_steps ?? (Array.isArray(r.steps) ? r.steps.length : null),
+        lastAction: Array.isArray(r.steps) ? r.steps.filter((s) => s.action).at(-1)?.action?.slice(0, 140) ?? null : null,
       };
     },
   };
