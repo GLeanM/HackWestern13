@@ -2,6 +2,14 @@ import { randomUUID } from "node:crypto";
 import { consolidate } from "./planner/consolidate.js";
 import { carryOver, defaultSelections, summarize } from "./review/cart.js";
 import { planCartRun } from "./cart/buildCart.js";
+import { applyStoreStock, fsaOf, observationsFrom } from "./research/storeStock.js";
+
+/** Steer a research result away from products the user's store didn't have. */
+export function withStoreStock(db, research, profile) {
+  const fsa = fsaOf(profile?.postalCode);
+  if (!fsa) return research;
+  return applyStoreStock(research, db.storeStock(fsa), fsa);
+}
 
 const MAX_NOTE = 500;
 
@@ -56,7 +64,7 @@ export function startResearchTask({ db, researcher, sub, task, profile, log = co
 
   (async () => {
     try {
-      const research = await researcher(plan.toBuy, profile);
+      const research = withStoreStock(db, await researcher(plan.toBuy, profile), profile);
       // Re-pricing keeps the user's review decisions where they still apply.
       const selections = plan.research
         ? carryOver(plan.research, plan.selections, research)
@@ -118,6 +126,12 @@ export function startCartBuild({ db, cartBuilder, sub, task, review, approval, l
   (async () => {
     try {
       const done = await cartBuilder(cartRun, save, controller.signal);
+      // Remember what the agent saw at this store for the next price search.
+      try {
+        db.recordStoreStock(fsaOf(db.getProfile(sub)?.postalCode), observationsFrom(done));
+      } catch (err) {
+        log.error(`[task ${task.id}] couldn't record store stock:`, err.message);
+      }
       db.setTaskState(sub, task.id, { status: "built", result: { ...task.result, cartRun: done } });
     } catch (err) {
       log.error(`[task ${task.id}] cart build failed:`, err.message);

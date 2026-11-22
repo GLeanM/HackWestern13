@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { auth, requiredScopes } from "express-oauth2-jwt-bearer";
 import { validateProfile, DEFAULT_PROFILE } from "./profile.js";
-import { validateTaskInput, startPlanningTask, startResearchTask, startCartBuild, cancelCartBuild, selectionsOf, withReview } from "./tasks.js";
+import { validateTaskInput, startPlanningTask, startResearchTask, startCartBuild, cancelCartBuild, selectionsOf, withReview, withStoreStock } from "./tasks.js";
 import { applyEdits, defaultSelection, summarize } from "./review/cart.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -162,7 +162,7 @@ export function createApp({ authOptions, db, planner, researcher, cartBuilder = 
     busy.add(key);
     try {
       const { updatedAt: _ignored, ...profile } = db.getProfile(sub) ?? task.input.profile;
-      const one = await researcher([{ name: item.name, category: item.category, quantities: item.quantities, searchTerm: query }], profile);
+      const one = withStoreStock(db, await researcher([{ name: item.name, category: item.category, quantities: item.quantities, searchTerm: query }], profile), profile);
       const found = one.items?.[0];
       const current = db.getTask(sub, task.id);
       if (!found?.chosen) {

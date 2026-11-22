@@ -25,6 +25,16 @@ const SCHEMA = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS shopping_tasks_sub ON shopping_tasks (sub, created_at DESC);
+  -- What the cart agent saw at a store, by postal area (FSA). Store facts only.
+  CREATE TABLE IF NOT EXISTS store_stock (
+    fsa         TEXT NOT NULL,
+    url         TEXT NOT NULL,
+    misses      INTEGER NOT NULL DEFAULT 0,
+    out_of_stock INTEGER NOT NULL DEFAULT 0,
+    available   INTEGER NOT NULL DEFAULT 0,
+    seen_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (fsa, url)
+  );
 `;
 
 function taskRow(row) {
@@ -106,8 +116,42 @@ export function openDb(path) {
     "UPDATE shopping_tasks SET status = 'building', error = NULL, updated_at = datetime('now') WHERE id = ? AND sub = ? AND status IN ('priced', 'built')",
   );
 
+  const upsertStock = db.prepare(`
+    INSERT INTO store_stock (fsa, url, misses, out_of_stock, available, seen_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(fsa, url) DO UPDATE SET
+      misses = CASE WHEN excluded.available = 1 THEN 0 ELSE misses + excluded.misses END,
+      out_of_stock = CASE WHEN excluded.available = 1 THEN 0 ELSE excluded.out_of_stock END,
+      available = excluded.available,
+      seen_at = excluded.seen_at
+  `);
+  const selectStock = db.prepare(
+    "SELECT url, misses, out_of_stock, available FROM store_stock WHERE fsa = ? AND seen_at >= datetime('now', ?)",
+  );
+
   return {
     interruptedRunIds,
+    /** Record what the cart agent saw: [{ url, seen: "available"|"out_of_stock"|"not_found" }]. */
+    recordStoreStock(fsa, observations) {
+      if (!fsa) return;
+      for (const o of observations) {
+        upsertStock.run(fsa, o.url, o.seen === "not_found" ? 1 : 0, o.seen === "out_of_stock" ? 1 : 0, o.seen === "available" ? 1 : 0);
+      }
+    },
+    /**
+     * Known stock at a store: Map<url, "available"|"unavailable">. A product
+     * counts as unavailable if it was out of stock last time, or the agent
+     * couldn't find it twice in a row (one miss can be the agent's mistake).
+     */
+    storeStock(fsa, ttlDays = 14) {
+      const known = new Map();
+      if (!fsa) return known;
+      for (const r of selectStock.all(fsa, `-${ttlDays} days`)) {
+        if (r.available) known.set(r.url, "available");
+        else if (r.out_of_stock || r.misses >= 2) known.set(r.url, "unavailable");
+      }
+      return known;
+    },
     createTask(sub, id, input) {
       insertUser.run(sub);
       insertTask.run(id, sub, "planning", JSON.stringify(input));

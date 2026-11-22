@@ -172,3 +172,4 @@ a.button {
 .build-head h3 { margin: 0; }
 button.danger { color: var(--error); border-color: var(--error); }
 .agent-action { font-size: 0.85rem; color: var(--text); background: var(--bg); border-left: 3px solid var(--accent); padding: 4px 8px; border-radius: 4px; overflow-wrap: anywhere; }
+.warn-store-stock { color: var(--text); }

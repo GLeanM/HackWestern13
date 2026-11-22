@@ -16,6 +16,8 @@ const FLAG_TEXT = {
   "price-by-weight": "Sold by weight; the final price depends on the pack.",
   "weight-estimated": "Pack weight unknown; priced for about 1 lb.",
   "no-link": "No product link, so the agent can't add this. Swap or remove it.",
+  "store-swapped": "Switched automatically: the first choice wasn't stocked at your T&T store last time.",
+  "not-at-your-store": "Your T&T store didn't have this last time. Pick another option or search again.",
 };
 
 function sizeLabel(p) {
@@ -219,6 +221,8 @@ export default function ReviewCart({ task, setTask, api, stale }) {
 
       <p className="muted small">
         Prices retrieved {fmtTime(research.retrievedAt)} by TinyFish. {research.storeNote}
+        {research.store?.knownProducts > 0 &&
+          ` CartPilot also knows the stock of ${research.store.knownProducts} product${research.store.knownProducts === 1 ? "" : "s"} at your ${research.store.fsa} store from past cart builds.`}
       </p>
     </div>
   );

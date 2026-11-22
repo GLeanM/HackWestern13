@@ -630,3 +630,36 @@ test("cancel: stops a running build; 404 for others; 409 when nothing is running
     fakeCartBuilder = addAll;
   }
 });
+
+test("store stock is learned from a cart build and used on the next price search", async () => {
+  const { id, task: priced } = await pricedTask("auth0|stock-loop");
+  const tok = await token("auth0|stock-loop", { scope: CART_SCOPES });
+  const task = (await call("GET", `/api/shopping-tasks/${id}`, { tok })).json.task;
+  const first = task.result.research.items[0];
+
+  // The agent finds the first item's pick out of stock at the user's (N6G) store.
+  fakeCartBuilder = async (cartRun, save) => {
+    for (const it of cartRun.items) it.outcome = it.url === first.chosen.url ? "out_of_stock" : "added";
+    cartRun.status = "partial";
+    save(cartRun);
+    return cartRun;
+  };
+  try {
+    await call("POST", `/api/shopping-tasks/${id}/build-cart`, { tok, body: approveBody(task) });
+    await built(tok, id);
+  } finally {
+    fakeCartBuilder = addAll;
+  }
+
+  // Re-pricing (same catalogue results) now steers to the alternative.
+  fakeResearcher = reviewResearcher;
+  await call("POST", `/api/shopping-tasks/${id}/research`, { tok });
+  const after = await settled(tok, id);
+  const item = after.result.research.items[0];
+  assert.equal(item.chosen.name, first.alternatives[0].name);
+  assert.ok(item.chosen.flags.includes("store-swapped"));
+  assert.equal(after.result.research.store.fsa, "N6G");
+  assert.ok(after.result.research.warnings.some((w) => w.type === "store-stock"));
+  void priced;
+  fakeResearcher = async () => SAMPLE_RESEARCH;
+});
