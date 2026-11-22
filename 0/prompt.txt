@@ -1,0 +1,9 @@
+/goal UI UX | Make the design for the site look less AI/vibecoded
+
+---
+
+I tried making a demo but some of the orders failed to get added to the cart and the agent struggled a lot, can you look into why this was and how we can fix?
+
+---
+
+Is everything pushed and commited? If not put up a PR and push
