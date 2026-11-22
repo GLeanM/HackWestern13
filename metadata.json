@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.13.4",
+  "checkpoint_id": "01M816VB9NBQWRSYQ29W7ESX6B",
+  "strategy": "manual-commit",
+  "branch": "phase-6c-faster-agent",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "server/cart/buildCart.js"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 44,
+    "cache_creation_tokens": 54102,
+    "cache_read_tokens": 12080128,
+    "output_tokens": 37649,
+    "api_call_count": 22
+  },
+  "redaction": {
+    "replacements": 127,
+    "layers": {
+      "betterleaks": 18,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 12,
+      "credentialed_uri": 0,
+      "entropy": 117,
+      "key_context": 0,
+      "provider_token": 16,
+      "shell_stdin": 0
+    }
+  }
+}

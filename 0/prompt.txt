@@ -1,0 +1,1 @@
+I like the stop button and it seemed to be more accurate and run faster. Is there anyway for it to run even faster? Also can you look into the logs to see what worked and what didn't and what areas could be improved overall?
