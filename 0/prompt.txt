@@ -1,0 +1,5 @@
+Begin Phase 4 looking up each shopping-list item on T&T and pricing it
+
+---
+
+Open a PR and push changes

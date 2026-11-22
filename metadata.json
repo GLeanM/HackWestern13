@@ -1,0 +1,58 @@
+{
+  "cli_version": "0.13.4",
+  "checkpoint_id": "01M810D5SQKV08RBDCE17A2W4D",
+  "strategy": "manual-commit",
+  "branch": "phase-4-tnt-pricing",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "README.md",
+    "server/app.js",
+    "server/app.test.js",
+    "server/db.js",
+    "server/index.js",
+    "server/planner/consolidate.js",
+    "server/planner/mealPlan.js",
+    "server/research/fixtures/tnt-search.json",
+    "server/research/match.js",
+    "server/research/match.test.js",
+    "server/research/research.js",
+    "server/research/research.test.js",
+    "server/research/tinyfish.js",
+    "server/research/tntParser.js",
+    "server/research/tntParser.test.js",
+    "server/tasks.js",
+    "src/PlanPanel.jsx",
+    "src/PriceTable.jsx",
+    "src/styles.css"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 82,
+    "cache_creation_tokens": 428322,
+    "cache_read_tokens": 10943949,
+    "output_tokens": 66289,
+    "api_call_count": 41
+  },
+  "redaction": {
+    "replacements": 100,
+    "layers": {
+      "betterleaks": 18,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 12,
+      "credentialed_uri": 0,
+      "entropy": 90,
+      "key_context": 0,
+      "provider_token": 16,
+      "shell_stdin": 0
+    }
+  }
+}
