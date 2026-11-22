@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useApi } from "./api.js";
+import PriceTable from "./PriceTable.jsx";
 
 const POLL_MS = 2000;
 const SLOT_ORDER = { breakfast: 0, lunch: 1, dinner: 2 };
@@ -26,7 +27,9 @@ export default function PlanPanel({ profileSaved }) {
     try {
       const { task } = await api(`/shopping-tasks/${id}`);
       setTask(task);
-      if (task.status === "planning") timer.current = setTimeout(() => load(id), POLL_MS);
+      if (task.status === "planning" || task.status === "researching") {
+        timer.current = setTimeout(() => load(id), POLL_MS);
+      }
     } catch (e) {
       setError(e.body?.message ?? "Couldn't load the plan.");
     }
@@ -44,7 +47,21 @@ export default function PlanPanel({ profileSaved }) {
     }
   }
 
+  async function price() {
+    setError("");
+    try {
+      const { task: t } = await api(`/shopping-tasks/${task.id}/research`, { method: "POST" });
+      setTask(t);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => load(t.id), POLL_MS);
+    } catch (err) {
+      setError(err.body?.message ?? "Couldn't start the price search.");
+    }
+  }
+
   const planning = task?.status === "planning";
+  const busy = planning || task?.status === "researching";
+  const hasPlan = task && ["planned", "researching", "priced"].includes(task.status);
 
   return (
     <section className="card">
@@ -59,7 +76,7 @@ export default function PlanPanel({ profileSaved }) {
               placeholder="e.g. more vegetables, one fish dinner, nothing spicy" />
           </label>
           <div className="actions">
-            <button type="submit" disabled={planning}>{planning ? "Planning…" : task ? "Plan again" : "Plan my groceries"}</button>
+            <button type="submit" disabled={busy}>{planning ? "Planning…" : task ? "Plan again" : "Plan my groceries"}</button>
             {planning && <span className="muted">The planner usually takes 10–30 seconds.</span>}
             {error && <span className="error">{error}</span>}
           </div>
@@ -67,12 +84,28 @@ export default function PlanPanel({ profileSaved }) {
       )}
 
       {task?.status === "failed" && <p className="error">{task.error}</p>}
-      {task?.status === "planned" && <PlanResult result={task.result} input={task.input} />}
+      {hasPlan && (
+        <PlanResult result={task.result} input={task.input}>
+          <div className="price-cta">
+            {task.status === "researching" ? (
+              <p className="muted"><span className="spinner" aria-hidden="true" /> TinyFish is searching T&amp;T for each item… usually 30–60 seconds.</p>
+            ) : (
+              <div className="actions">
+                <button type="button" onClick={price}>
+                  {task.status === "priced" ? "Refresh T&T prices" : "Find prices on T&T"}
+                </button>
+                {task.error && <span className="error">{task.error}</span>}
+              </div>
+            )}
+          </div>
+          {task.result.research && <PriceTable research={task.result.research} stale={task.status === "researching"} />}
+        </PlanResult>
+      )}
     </section>
   );
 }
 
-function PlanResult({ result, input }) {
+function PlanResult({ result, input, children }) {
   const days = groupBy(result.meals, (m) => m.day);
   const byCategory = groupBy(result.toBuy, (i) => i.category);
 
@@ -89,7 +122,10 @@ function PlanResult({ result, input }) {
         </ul>
       )}
 
-      <h3>Shopping list ({result.toBuy.length} items)</h3>
+      {children}
+
+      <details className="shopping-details" open={!result.research}>
+      <summary><h3>Shopping list ({result.toBuy.length} items)</h3></summary>
       {Object.entries(byCategory).map(([cat, items]) => (
         <div key={cat} className="list-group">
           <h4>{fmtCategory(cat)}</h4>
@@ -103,6 +139,8 @@ function PlanResult({ result, input }) {
           </ul>
         </div>
       ))}
+
+      </details>
 
       {result.pantryCovered.length > 0 && (
         <p className="muted">Already in your pantry: {result.pantryCovered.map((i) => i.name).join(", ")}</p>

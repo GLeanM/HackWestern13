@@ -72,7 +72,14 @@ export function consolidate(plan, profile) {
       if (!key) continue;
       let g = groups.get(key);
       if (!g) {
-        g = { key, name: ing.name.trim().toLowerCase(), category: ing.category ?? "other", amounts: {}, usedIn: [] };
+        g = {
+          key,
+          name: ing.name.trim().toLowerCase(),
+          searchTerm: (ing.searchTerm || ing.name).trim().toLowerCase(),
+          category: ing.category ?? "other",
+          amounts: {},
+          usedIn: [],
+        };
         groups.set(key, g);
       }
       g.amounts[ing.unit] = (g.amounts[ing.unit] ?? 0) + ing.quantity;
@@ -88,7 +95,7 @@ export function consolidate(plan, profile) {
   for (const g of groups.values()) {
     const item = {
       name: g.name,
-      searchTerm: g.name,
+      searchTerm: g.searchTerm,
       category: g.category,
       quantities: Object.entries(g.amounts).map(([unit, amount]) => ({ amount: round(amount, unit), unit })),
       usedIn: g.usedIn,

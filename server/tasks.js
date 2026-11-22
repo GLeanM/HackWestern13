@@ -41,3 +41,28 @@ export function startPlanningTask({ db, planner, sub, profile, note, log = conso
 
   return task;
 }
+
+/**
+ * Prices a planned task's shopping list on T&T in the background.
+ * Caller must have claimed the task (db.claimResearch) first. On failure the
+ * task returns to its previous state so the plan (and any old prices) survive.
+ */
+export function startResearchTask({ db, researcher, sub, task, profile, log = console }) {
+  const plan = task.result;
+  const previousStatus = task.status; // "planned" or "priced"
+  db.setTaskState(sub, task.id, { status: "researching", result: plan });
+
+  (async () => {
+    try {
+      const research = await researcher(plan.toBuy, profile);
+      db.setTaskState(sub, task.id, { status: "priced", result: { ...plan, research } });
+    } catch (err) {
+      log.error(`[task ${task.id}] pricing failed:`, err.message);
+      db.setTaskState(sub, task.id, {
+        status: previousStatus,
+        result: plan,
+        error: "Couldn't reach T&T to check prices. Please try again in a moment.",
+      });
+    }
+  })();
+}

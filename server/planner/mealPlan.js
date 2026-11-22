@@ -28,12 +28,13 @@ export const PLAN_SCHEMA = {
             items: {
               type: "object",
               properties: {
-                name: { type: "string", description: "Generic grocery product name to search for, e.g. 'chicken thighs', 'baby bok choy', 'jasmine rice'" },
+                name: { type: "string", description: "Generic grocery product name, e.g. 'boneless chicken thighs', 'baby bok choy', 'jasmine rice'" },
+                searchTerm: { type: "string", description: "Short 1-3 word query a shopper would type into the T&T website search to find this, e.g. 'chicken thigh', 'bok choy', 'jasmine rice'" },
                 quantity: { type: "number" },
                 unit: { type: "string", enum: UNITS },
                 category: { type: "string", enum: CATEGORIES },
               },
-              required: ["name", "quantity", "unit", "category"],
+              required: ["name", "searchTerm", "quantity", "unit", "category"],
             },
           },
         },

@@ -65,14 +65,25 @@ export function openDb(path) {
     "SELECT * FROM shopping_tasks WHERE sub = ? ORDER BY created_at DESC, rowid DESC LIMIT ?",
   );
   const countActive = db.prepare(
-    "SELECT COUNT(*) AS n FROM shopping_tasks WHERE sub = ? AND status = 'planning'",
+    "SELECT COUNT(*) AS n FROM shopping_tasks WHERE sub = ? AND status IN ('planning', 'researching')",
   );
   const finishTask = db.prepare(
     "UPDATE shopping_tasks SET status = ?, result = ?, error = ?, updated_at = datetime('now') WHERE id = ? AND sub = ?",
   );
-  // Tasks interrupted by a server restart can never finish; mark them failed.
+  const setState = db.prepare(
+    "UPDATE shopping_tasks SET status = ?, result = ?, error = ?, updated_at = datetime('now') WHERE id = ? AND sub = ?",
+  );
+  // Atomic "planned/priced → researching" so two clicks can't start two searches.
+  const claimResearch = db.prepare(
+    "UPDATE shopping_tasks SET status = 'researching', error = NULL, updated_at = datetime('now') WHERE id = ? AND sub = ? AND status IN ('planned', 'priced')",
+  );
+  // Tasks interrupted by a server restart can never finish. A plan that was
+  // mid-planning fails; one that was mid-pricing keeps its plan.
   db.prepare(
     "UPDATE shopping_tasks SET status = 'failed', error = 'Interrupted by a server restart. Please try again.' WHERE status = 'planning'",
+  ).run();
+  db.prepare(
+    "UPDATE shopping_tasks SET status = 'planned', error = 'Price search was interrupted. Please try again.' WHERE status = 'researching'",
   ).run();
 
   return {
@@ -95,6 +106,13 @@ export function openDb(path) {
     },
     failTask(sub, id, message) {
       finishTask.run("failed", null, message, id, sub);
+    },
+    /** Returns true if the task moved to "researching" (it was planned or priced). */
+    claimResearch(sub, id) {
+      return claimResearch.run(id, sub).changes === 1;
+    },
+    setTaskState(sub, id, { status, result, error = null }) {
+      setState.run(status, result === undefined ? null : JSON.stringify(result), error, id, sub);
     },
     getProfile(sub) {
       const row = selectPrefs.get(sub);
